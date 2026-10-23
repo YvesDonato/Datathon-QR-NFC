@@ -39,20 +39,24 @@ export default async function HackerProfilePage(props: {
 
   return (
     <main className={styles.page}>
-      <Link className={me.back} href="/me">
-        ← Menu
-      </Link>
-      <p className={styles.eyebrow}>{m.event.name}</p>
+      <div className={styles.top}>
+        <Link className={me.back} href="/me">
+          ← Menu
+        </Link>
+        <span className={styles.context}>{m.event.name}</span>
+      </div>
       <h1>Hacker profile</h1>
       {notices.badge === 'linked' && (
         <p role="status" className={formStyles.ok}>
           ✓ Badge linked. Add your LinkedIn and choose whether to share it.
         </p>
       )}
-      <section className={styles.card} style={{ marginTop: 16 }}>
-        <p className={styles.eyebrow}>Name</p>
-        <p className={styles.name}>{`${m.firstName} ${m.lastName}`.trim()}</p>
-        <p style={{ marginTop: 8 }}>{m.badge ? '✓ Badge linked.' : 'No badge yet. Tap your badge with your phone to link it to you.'}</p>
+      <section className={styles.card}>
+        <div className={me.field}>
+          <p className={me.label}>Name</p>
+          <p className={styles.name}>{`${m.firstName} ${m.lastName}`.trim()}</p>
+        </div>
+        {m.badge ? <p className={me.chip}>✓ Badge linked.</p> : <p className={styles.meta}>No badge yet. Tap your badge with your phone to link it to you.</p>}
         <form action={save} className={formStyles.form}>
           <input type="hidden" name="participantId" value={m.participantId} />
           <label htmlFor="linkedin">LinkedIn</label>

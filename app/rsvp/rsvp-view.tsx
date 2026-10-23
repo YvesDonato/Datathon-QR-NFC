@@ -98,8 +98,10 @@ export function RsvpView() {
 
   return (
     <main className={styles.page}>
+      <div className={styles.top}>
+        <span className={styles.context}>Invitation</span>
+      </div>
       <section className={styles.card}>
-        <p className={styles.eyebrow}>Invitation</p>
         {view.kind === 'loading' && <p role="status">Loading…</p>}
         {view.kind === 'not_found' && (
           <>
@@ -117,7 +119,7 @@ export function RsvpView() {
           <>
             <h1>You’re going</h1>
             <p>We’re emailing your check-in pass. You can also see it on Passline.</p>
-            <p style={{ marginTop: 16 }}>
+            <p>
               <a className={styles.link} href="/login?next=%2Fme">
                 Sign in to see your pass
               </a>
@@ -133,10 +135,10 @@ export function RsvpView() {
         {view.kind === 'invite' && (
           <>
             <h1>{view.invite.event.name}</h1>
-            <p>
+            <p className={styles.meta}>
               {formatEventDateTime(view.invite.event.startsAt, view.invite.event.timezone)} · {view.invite.event.venue}
             </p>
-            <p style={{ marginTop: 12 }}>
+            <p>
               Hi {view.invite.firstName}, will you be there?
               {view.invite.status === 'accepted' && ' (You said yes.)'}
               {view.invite.status === 'withdrawn' && ' (You said no. You can still change your mind.)'}
@@ -160,8 +162,8 @@ export function RsvpView() {
                   });
                 }}
               >
-                <h2 style={{ fontSize: 18, margin: '8px 0 0' }}>Emergency contact</h2>
-                <p className={styles.eyebrow}>Who we call if something happens to you. Only the organizers see it.</p>
+                <h2>Emergency contact</h2>
+                <p className={styles.meta}>Who we call if something happens to you. Only the organizers see it.</p>
                 <label htmlFor="emergencyName">Emergency contact name</label>
                 <input id="emergencyName" name="emergencyName" required maxLength={100} autoComplete="off" className={form.input} />
                 <label htmlFor="emergencyPhone">Emergency contact phone</label>
@@ -179,8 +181,8 @@ export function RsvpView() {
                   className={me.textarea}
                 />
 
-                <h2 style={{ fontSize: 18, margin: '8px 0 0' }}>Networking profile (optional)</h2>
-                <p className={styles.eyebrow}>People at the event can tap your badge to see it, if you share it.</p>
+                <h2>Networking profile (optional)</h2>
+                <p className={styles.meta}>People at the event can tap your badge to see it, if you share it.</p>
                 <label htmlFor="linkedin">LinkedIn</label>
                 <input
                   id="linkedin"
@@ -205,7 +207,7 @@ export function RsvpView() {
                   <>
                     <label htmlFor="password">Your Passline password</label>
                     <input id="password" name="password" type="password" required maxLength={200} autoComplete="current-password" className={form.input} />
-                    <p className={styles.eyebrow}>
+                    <p className={styles.meta}>
                       You already have a Passline account with this email.{' '}
                       <a className={form.linkButton} style={{ display: 'inline-flex', alignItems: 'center' }} href="/login" target="_blank" rel="noopener">
                         Forgot it?

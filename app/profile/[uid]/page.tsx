@@ -72,8 +72,10 @@ export default async function BadgeProfilePage(props: {
 
   return (
     <main className={styles.page}>
+      <div className={styles.top}>
+        <span className={styles.context}>Event badge</span>
+      </div>
       <section className={styles.card}>
-        <p className={styles.eyebrow}>Event badge</p>
         {claimResult === 'taken' && (
           <p role="alert" className={formStyles.error}>
             ✕ This badge belongs to someone else. Ask an organizer.
@@ -104,7 +106,7 @@ export default async function BadgeProfilePage(props: {
                   You’re signed in as {viewer.email ?? 'an unknown address'}. To make it yours, sign in with the email you
                   registered for the event with.
                 </p>
-                <Link className={styles.link} href={`/login?next=${encodeURIComponent(`/profile/${raw}`)}`} style={{ marginTop: 12 }}>
+                <Link className={styles.link} href={`/login?next=${encodeURIComponent(`/profile/${raw}`)}`}>
                   Use a different email
                 </Link>
               </>

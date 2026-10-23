@@ -171,21 +171,33 @@ function ActiveView({ pass, token, onChanged }: { pass: ActivePass; token: strin
 
   return (
     <>
-      <section className={styles.card}>
-        <p className={styles.eyebrow}>Check-in pass</p>
-        <h1 className={styles.name}>{pass.firstName}</h1>
+      <section className={styles.ticket} aria-labelledby="pass-name">
+        <div className={styles.ticketBar}>
+          <span className={styles.dots} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          Check-in pass
+        </div>
+        <div className={styles.ticketBody}>
+          <h1 id="pass-name" className={styles.name}>
+            {pass.firstName}
+          </h1>
+          <p className={styles.event}>{pass.event.name}</p>
+          <canvas ref={canvas} className={styles.qr} role="img" aria-label="Your check-in QR code" />
+          <p className={styles.hint}>Show this at the door. Turn your screen brightness up. This code is personal.</p>
+        </div>
         <dl className={styles.facts}>
-          <dt>Event</dt>
-          <dd>{pass.event.name}</dd>
-          <dt>When</dt>
-          <dd>{formatEventDateTime(pass.event.startsAt, pass.event.timezone)}</dd>
-          <dt>Where</dt>
-          <dd>{pass.event.venue}</dd>
+          <div>
+            <dt>When</dt>
+            <dd>{formatEventDateTime(pass.event.startsAt, pass.event.timezone)}</dd>
+          </div>
+          <div>
+            <dt>Where</dt>
+            <dd>{pass.event.venue}</dd>
+          </div>
         </dl>
-      </section>
-      <section className={styles.card}>
-        <canvas ref={canvas} className={styles.qr} role="img" aria-label="Your check-in QR code" />
-        <p className={styles.hint}>Show this at the door. Turn your screen brightness up. This code is personal.</p>
       </section>
       <PhotoSection pass={pass} token={token} onChanged={onChanged} />
       {/* Keyed so another pass opened in this tab (hash change) never shows the previous pass's setting. */}
@@ -234,7 +246,7 @@ function ProfileSection({ pass, token }: { pass: ActivePass; token: string }) {
         <input type="checkbox" checked={on} onChange={onToggle} disabled={busy} />
         Show my {what} when someone taps my badge
       </label>
-      {!pass.profile.hasLinkedin && <p className={styles.eyebrow}>We don’t have a LinkedIn URL for you, so only your name would show.</p>}
+      {!pass.profile.hasLinkedin && <p className={styles.meta}>We don’t have a LinkedIn URL for you, so only your name would show.</p>}
       <p className={`${styles.message} ${message ? styles[message.tone] : ''}`} role="status" aria-live="polite">
         {message ? `${message.tone === 'ok' ? '✓' : '✕'} ${message.text}` : ''}
       </p>
@@ -285,7 +297,7 @@ function PhotoSection({ pass, token, onChanged }: { pass: ActivePass; token: str
         {pass.photo.url ? (
           <Image className={styles.photo} src={pass.photo.url} alt="Your photo" width={96} height={96} unoptimized />
         ) : (
-          <p className={styles.eyebrow}>No photo yet.</p>
+          <p className={styles.meta}>No photo yet.</p>
         )}
       </div>
       {pass.photoLocked ? (

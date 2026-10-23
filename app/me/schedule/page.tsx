@@ -11,12 +11,14 @@ export default async function SchedulePage() {
   const { me: m } = await loadMyEvent('/me/schedule');
   return (
     <main className={styles.page}>
-      <Link className={me.back} href="/me">
-        ← Menu
-      </Link>
-      <p className={styles.eyebrow}>{m.event.name}</p>
+      <div className={styles.top}>
+        <Link className={me.back} href="/me">
+          ← Menu
+        </Link>
+        <span className={styles.context}>{m.event.name}</span>
+      </div>
       <h1>Schedule</h1>
-      <section className={styles.card} style={{ marginTop: 16 }}>
+      <section className={styles.card}>
         <p className={me.text}>{m.event.schedule || 'The organizers haven’t posted the schedule yet.'}</p>
       </section>
     </main>

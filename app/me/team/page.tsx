@@ -17,6 +17,8 @@ import { loadMyEvent, menuMetadata } from '../load';
 
 export const metadata: Metadata = menuMetadata('Team');
 
+const initials = (name: string) => name.split(/\s+/).map((w) => Array.from(w)[0] ?? '').join('').slice(0, 2).toUpperCase();
+
 const NOTICES: Record<TeamCode, string> = {
   CREATED: '✓ Team created. Share the code with your teammates.',
   JOINED: '✓ You joined the team.',
@@ -72,10 +74,12 @@ export default async function TeamPage(props: { searchParams: Promise<{ r?: stri
 
   return (
     <main className={styles.page}>
-      <Link className={me.back} href="/me">
-        ← Menu
-      </Link>
-      <p className={styles.eyebrow}>{m.event.name}</p>
+      <div className={styles.top}>
+        <Link className={me.back} href="/me">
+          ← Menu
+        </Link>
+        <span className={styles.context}>{m.event.name}</span>
+      </div>
       <h1>Team</h1>
       {notice && (
         <p role={notice.startsWith('✓') ? 'status' : 'alert'} className={notice.startsWith('✓') ? formStyles.ok : formStyles.error}>
@@ -83,7 +87,7 @@ export default async function TeamPage(props: { searchParams: Promise<{ r?: stri
         </p>
       )}
       {!team && live && (
-        <section aria-labelledby="looking-title" className={styles.card} style={{ marginTop: 16 }}>
+        <section aria-labelledby="looking-title" className={styles.card}>
           <h2 id="looking-title">Find teammates</h2>
           <form action={act} className={formStyles.form}>
             <input type="hidden" name="op" value="looking" />
@@ -91,79 +95,100 @@ export default async function TeamPage(props: { searchParams: Promise<{ r?: stri
               <input type="checkbox" name="looking" defaultChecked={m.lookingForTeam} style={{ width: 22, height: 22 }} />
               Looking for a team
             </label>
-            <p>List my name in the teammate directory for this event.</p>
+            <p className={styles.meta}>List my name in the teammate directory for this event.</p>
             <button type="submit">Save directory preference</button>
           </form>
         </section>
       )}
       {!team && invites.length > 0 && (
-        <section aria-labelledby="invites-title" className={styles.card} style={{ marginTop: 16 }}>
+        <section aria-labelledby="invites-title" className={styles.card}>
           <h2 id="invites-title">Pending invites</h2>
-          {invites.map((invite) => (
-            <div key={invite.teamId}>
-              <p style={{ marginTop: 12 }}>{invite.from} invited you to join {invite.teamName}.</p>
-              {open && (
-                <form action={act} className={formStyles.form}>
-                  <input type="hidden" name="op" value="accept" />
-                  <input type="hidden" name="teamId" value={invite.teamId} />
-                  <button type="submit">Accept</button>
-                </form>
-              )}
-              <form action={act} className={formStyles.form}>
-                <input type="hidden" name="op" value="decline" />
-                <input type="hidden" name="teamId" value={invite.teamId} />
-                <button type="submit">Decline</button>
-              </form>
-            </div>
-          ))}
+          <ul className={me.people}>
+            {invites.map((invite) => (
+              <li key={invite.teamId}>
+                <p>
+                  {invite.from} invited you to join {invite.teamName}.
+                </p>
+                <div className={me.row}>
+                  {open && (
+                    <form action={act}>
+                      <input type="hidden" name="op" value="accept" />
+                      <input type="hidden" name="teamId" value={invite.teamId} />
+                      <button type="submit">Accept</button>
+                    </form>
+                  )}
+                  <form action={act}>
+                    <input type="hidden" name="op" value="decline" />
+                    <input type="hidden" name="teamId" value={invite.teamId} />
+                    <button type="submit" className={formStyles.secondary}>
+                      Decline
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
       {team ? (
-        <section aria-labelledby="team-name" className={styles.card} style={{ marginTop: 16 }}>
+        <section aria-labelledby="team-name" className={styles.card}>
           <h2 id="team-name">{team.name}</h2>
-          <ul>
+          <ul className={me.members}>
             {team.members.map((name) => (
-              <li key={name}>{name}</li>
+              <li key={name}>
+                <span className={me.initials} aria-hidden="true">
+                  {initials(name)}
+                </span>
+                {name}
+              </li>
             ))}
           </ul>
-          <p style={{ marginTop: 8 }}>
-            Join code: <strong>{formatJoinCode(team.code)}</strong>. Share it with your teammates (4 people at most).
-          </p>
-          <h3 style={{ marginTop: 16 }}>Track</h3>
-          {!m.event.tracksReleased ? (
-            <p>Tracks are announced at the hackathon.</p>
-          ) : live && tracks.length > 0 ? (
-            <form action={act} className={formStyles.form}>
-              <input type="hidden" name="op" value="track" />
-              <label htmlFor="trackId">Your team’s track</label>
-              <select id="trackId" name="trackId" defaultValue={team.trackId ?? ''} required className={formStyles.input}>
-                <option value="" disabled>
-                  Pick a track
-                </option>
-                {tracks.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+          <div className={me.code}>
+            <span className={me.label}>Join code</span>
+            <strong className={me.codeValue}>{formatJoinCode(team.code)}</strong>
+            <span className={styles.meta}>Share it with your teammates (4 people at most).</span>
+          </div>
+          <div className={me.divider}>
+            <h3>Track</h3>
+            {!m.event.tracksReleased ? (
+              <p>Tracks are announced at the hackathon.</p>
+            ) : live && tracks.length > 0 ? (
+              <form action={act} className={formStyles.form}>
+                <input type="hidden" name="op" value="track" />
+                <label htmlFor="trackId">Your team’s track</label>
+                <select id="trackId" name="trackId" defaultValue={team.trackId ?? ''} required className={formStyles.input}>
+                  <option value="" disabled>
+                    Pick a track
                   </option>
-                ))}
-              </select>
-              <button type="submit">Save track</button>
-            </form>
-          ) : (
-            <p>{trackName ?? 'No track chosen.'}</p>
-          )}
+                  {tracks.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit">Save track</button>
+              </form>
+            ) : (
+              <p>{trackName ?? 'No track chosen.'}</p>
+            )}
+          </div>
           {open && (
-            <form action={act} className={formStyles.form}>
+            <form action={act} className={`${formStyles.form} ${me.divider}`}>
               <input type="hidden" name="op" value="leave" />
-              {team.members.length === 1 && <p>You’re the only member: leaving deletes the team.</p>}
-              <button type="submit">Leave team</button>
+              {team.members.length === 1 && <p className={styles.meta}>You’re the only member: leaving deletes the team.</p>}
+              <button type="submit" className={formStyles.secondary}>
+                Leave team
+              </button>
             </form>
           )}
         </section>
       ) : !open ? (
-        <p>{live ? 'Teams open on hackathon day. Come back then to create or join one.' : 'The event is over.'}</p>
+        <section className={styles.card}>
+          <p>{live ? 'Teams open on hackathon day. Come back then to create or join one.' : 'The event is over.'}</p>
+        </section>
       ) : (
         <>
-          <section aria-labelledby="create" className={styles.card} style={{ marginTop: 16 }}>
+          <section aria-labelledby="create" className={styles.card}>
             <h2 id="create">Create a team</h2>
             <form action={act} className={formStyles.form}>
               <input type="hidden" name="op" value="create" />
@@ -172,7 +197,7 @@ export default async function TeamPage(props: { searchParams: Promise<{ r?: stri
               <button type="submit">Create team</button>
             </form>
           </section>
-          <section aria-labelledby="join" className={styles.card} style={{ marginTop: 16 }}>
+          <section aria-labelledby="join" className={styles.card}>
             <h2 id="join">Join with a code</h2>
             <form action={act} className={formStyles.form}>
               <input type="hidden" name="op" value="join" />
@@ -184,19 +209,19 @@ export default async function TeamPage(props: { searchParams: Promise<{ r?: stri
         </>
       )}
       {open && (!team || team.members.length < 4) && (
-        <section aria-labelledby="directory-title" className={styles.card} style={{ marginTop: 16 }}>
+        <section aria-labelledby="directory-title" className={styles.card}>
           <h2 id="directory-title">Teammate directory</h2>
-          {!team && <p>Create a team to invite them.</p>}
-          {directory.length === 0 ? <p>No one is looking for a team yet.</p> : (
-            <ul>
+          {!team && <p className={styles.meta}>Create a team to invite them.</p>}
+          {directory.length === 0 ? <p className={styles.meta}>No one is looking for a team yet.</p> : (
+            <ul className={me.people}>
               {directory.map((person) => (
-                <li key={person.id} style={{ marginTop: 12 }}>
+                <li key={person.id}>
                   {person.name}
                   {team && (
-                    <form action={act} className={formStyles.form}>
+                    <form action={act}>
                       <input type="hidden" name="op" value="invite" />
                       <input type="hidden" name="inviteeId" value={person.id} />
-                      <button type="submit" aria-label={`Invite ${person.name}`}>
+                      <button type="submit" className={formStyles.secondary} aria-label={`Invite ${person.name}`}>
                         Invite
                       </button>
                     </form>

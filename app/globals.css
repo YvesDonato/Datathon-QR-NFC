@@ -1,14 +1,25 @@
+/* Theme from sheridandatathon.com: navy, terminal green, Fira Code. */
 :root {
-  --fg: #111;
-  --muted: #555;
-  --bg: #fafafa;
-  --card: #fff;
-  --line: #ddd;
-  --accent: #1d4ed8;
-  --ok: #166534;
-  --warn: #92400e;
-  --bad: #991b1b;
-  color-scheme: light;
+  --fg: #e8f2ff;
+  --muted: #8fa0c4;
+  --bg: #05081a;
+  --bg-deep: #030512;
+  --card: #0a1029;
+  --raised: #0c1330;
+  --line: #b8dcff24;
+  --field: #6b7aa0;
+  --accent: #34d399;
+  --accent-ink: #03120c;
+  --link: #b8dcff;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --shadow: inset 0 1px 0 0 #b8dcff0f, 0 12px 32px -16px #030512e6;
+  color-scheme: dark;
+  accent-color: var(--accent);
+  caret-color: var(--accent);
+  scrollbar-color: #b8dcff38 transparent;
 }
 
 * { box-sizing: border-box; }
@@ -17,28 +28,58 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.5 var(--font-mono), ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
+::selection { color: #f2fff9; background: #34d39952; }
+
+h1, h2, h3 { font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; text-wrap: balance; }
+h1 { font-size: 28px; margin: 0 0 12px; }
+h2 { font-size: 20px; margin: 0 0 8px; }
+h3 { font-size: 16px; margin: 0 0 8px; }
+
+a { color: var(--link); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+
 :focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 button, .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 44px;
   min-width: 44px;
   padding: 0 18px;
-  border-radius: 10px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
+  border-radius: 8px;
+  border: 1px solid var(--btn, var(--accent));
+  background: var(--btn, var(--accent));
+  color: var(--accent-ink);
   font: inherit;
   font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
+  transition: background-color 0.16s var(--ease), border-color 0.16s var(--ease), color 0.16s var(--ease);
 }
 
+/* A variable, not a background: classes that set their own background keep it (and style their own hover). */
+:where(button, .button):hover:not(:disabled) { --btn: #6ee7b7; }
+
 button:disabled { opacity: 0.6; cursor: default; }
+
+/* Long labels beside a checkbox must not squeeze it. */
+input[type='checkbox'], input[type='radio'] { flex: none; }
+
+/* Zero specificity: module classes still win. */
+:where(input:not([type='checkbox'], [type='radio'], [type='file']), textarea, select) {
+  background: var(--raised);
+  color: var(--fg);
+  border: 1px solid var(--field);
+}
+:where(input, textarea)::placeholder { color: var(--muted); opacity: 1; }
 
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

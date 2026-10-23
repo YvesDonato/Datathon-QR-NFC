@@ -34,18 +34,20 @@ export default async function EmergencyPage(props: { searchParams: Promise<{ sav
 
   return (
     <main className={styles.page}>
-      <Link className={me.back} href="/me">
-        ← Menu
-      </Link>
-      <p className={styles.eyebrow}>{m.event.name}</p>
+      <div className={styles.top}>
+        <Link className={me.back} href="/me">
+          ← Menu
+        </Link>
+        <span className={styles.context}>{m.event.name}</span>
+      </div>
       <h1>Emergency contact</h1>
-      <section aria-labelledby="event-help" className={styles.card} style={{ marginTop: 16 }}>
+      <section aria-labelledby="event-help" className={styles.card}>
         <h2 id="event-help">During the event</h2>
         <p className={me.text}>{m.event.emergencyInfo || 'The organizers haven’t posted emergency info yet. Find an organizer at the venue.'}</p>
       </section>
-      <section aria-labelledby="own-contact" className={styles.card} style={{ marginTop: 16 }}>
+      <section aria-labelledby="own-contact" className={styles.card}>
         <h2 id="own-contact">Your emergency contact</h2>
-        <p>Who we call if something happens to you. Only the organizers see it, and it’s deleted 30 days after the event.</p>
+        <p className={styles.meta}>Who we call if something happens to you. Only the organizers see it, and it’s deleted 30 days after the event.</p>
         <form action={save} className={formStyles.form}>
           <input type="hidden" name="participantId" value={m.participantId} />
           <label htmlFor="emergencyName">Name</label>
