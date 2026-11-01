@@ -123,6 +123,10 @@ test('T-UI-02: the profile setup step bar fills as you go forward and back; redu
     await page.getByRole('button', { name: 'Next', exact: true }).click();
     await expect(page.getByText('Step 2 of 4: Health and access', { exact: true })).toBeVisible();
     const arriving = await snapshot();
+    // The step's own blocks rise too (owner's request: every RSVP onboarding page animates).
+    const stepRising = await page.locator('[data-step="2"] > *').evaluateAll((elements) =>
+      elements.some((el) => el.getAnimations().some((animation) => animation.playState === 'running')));
+    expect(stepRising).toBe(reducedMotion === 'no-preference');
     expect(arriving[1]?.filled).toBe(true);
     expect(arriving[0]?.running).toBe(0); // Already-filled segments stay still.
     if (reducedMotion === 'reduce') {
@@ -132,6 +136,7 @@ test('T-UI-02: the profile setup step bar fills as you go forward and back; redu
     }
     await settle();
     await expect(secondFill).toHaveCSS('transform', /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+    await expect(page.getByRole('heading', { name: 'Health and access' })).toHaveCSS('opacity', '1');
 
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByText('Step 1 of 4: The event', { exact: true })).toBeVisible();
