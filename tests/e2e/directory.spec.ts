@@ -35,7 +35,9 @@ test('T-DIR-05: opt in through RSVP profile walkthrough, browse/filter/contact, 
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Networking', exact: true })).toBeVisible();
   await page.getByLabel('List me in the Hacker directory').check();
-  await page.getByLabel('Prefer not to say', { exact: true }).uncheck();
+  // The walkthrough starts the pace live on Balanced (owner's request, v0.11.34).
+  await expect(page.getByLabel('Prefer not to say', { exact: true })).not.toBeChecked();
+  await expect(page.getByRole('slider', { name: 'Your pace', exact: true })).toHaveAttribute('aria-valuetext', 'Balanced');
   await page.getByRole('slider', { name: 'Your pace', exact: true }).press('End');
   await expect(page.getByRole('slider', { name: 'Your pace', exact: true })).toHaveAttribute('aria-valuetext', 'Going for the win');
   await page.getByLabel('Bio', { exact: true }).fill('I enjoy data visualisation.\n<b>Plain text</b>');

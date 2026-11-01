@@ -330,7 +330,7 @@ export default async function HackerProfilePage(props: {
           />
           <Label htmlFor="bio">Bio</Label>
           <Textarea id="bio" name="bio" maxLength={280} rows={4} defaultValue={m.bio ?? ''} placeholder="What do you enjoy building? Who would you like to meet?" className="min-h-24 w-full" />
-          <PaceSlider key={m.pace ?? ''} value={m.pace ?? ''} />
+          <PaceSlider key={m.pace ?? ''} value={m.pace ?? ''} startBalanced={walkthrough} />
           <Label className="flex min-h-11 items-center gap-3">
             <input type="checkbox" name="directoryOptIn" defaultChecked={m.directoryOptIn} className="size-[22px] shrink-0" />
             List me in the Hacker directory

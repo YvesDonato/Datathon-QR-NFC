@@ -1,6 +1,6 @@
 # Sheridan Datathon Station — Product & Technical Specification
 
-> **Status:** Draft v0.11.33 · **Owner:** Ade · **Last updated:** 2026-10-31
+> **Status:** Draft v0.11.34 · **Owner:** Ade · **Last updated:** 2026-11-01
 > The app is **Station** (Sheridan Datathon Station, `https://station.sheridandatathon.com`); it was called Passline until v0.11.21.
 
 ## 0. How to read this document
@@ -1646,6 +1646,8 @@ Each slice ends with its tests green in CI and a short demo.
 ---
 
 ## 20. Changelog
+
+- **v0.11.34 (2026-11-01)** — In the RSVP's profile walkthrough (`?setup=1`), the pace slider starts live on **Balanced** with "Prefer not to say" unticked when no pace is saved (owner's request: the greyed-out slider sitting on Balanced read as already set); ticking it still clears pace, and without JavaScript the Balanced radio is preselected. The profile's Networking tab is unchanged ("Prefer not to say" ticked while no pace is saved). F14, F16; T-DIR-05.
 
 - **v0.11.33 (2026-11-01)** — Every page of the RSVP onboarding animates (owner's request): the profile setup walkthrough's steps now rise into place like the RSVP steps, on Next and Back. §15; T-UI-02 extended. The Datathon's RSVPs close Fri, Nov 6, 11:59 PM EST instead of Sat, Nov 7 (owner's request; set on the live event through the Info API, no code change). F13.
 
