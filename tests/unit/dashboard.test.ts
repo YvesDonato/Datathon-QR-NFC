@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucketLabel, dietaryBreakdown, doorClosedWarning } from '@/lib/domain/dashboard';
+import { bucketLabel, dietaryBreakdown, dietaryGroups, doorClosedWarning, noRestriction } from '@/lib/domain/dashboard';
 
 const startsAt = '2026-10-03T13:00:00Z';
 const endsAt = '2026-10-03T23:00:00Z';
@@ -51,4 +51,11 @@ it('T-ANA-07: dietary notes are grouped by keyword; a note can be in several gro
     ],
   });
   expect(dietaryBreakdown([])).toEqual({ total: 0, none: 0, other: 0, groups: [] });
+  // v0.11.39: one note's groups (Catering lists, meal scan tags), and whether it means no restriction.
+  expect(dietaryGroups('Halal, no pork')).toEqual(['Halal', 'No pork']);
+  expect(dietaryGroups('Vegan, nut allergy')).toEqual(['Vegan', 'Nuts']);
+  expect(dietaryGroups('N/A')).toEqual([]);
+  expect(dietaryGroups('low FODMAP')).toEqual([]);
+  expect(dietaryGroups(null)).toEqual([]);
+  expect([noRestriction('None.'), noRestriction(''), noRestriction(null), noRestriction('low FODMAP'), noRestriction('Halal')]).toEqual([true, true, true, false, false]);
 });

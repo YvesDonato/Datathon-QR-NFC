@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import type { Authenticate } from '@/lib/auth/session';
@@ -5,7 +6,7 @@ import { requireStaffBySlug } from '@/lib/auth/staff';
 import { staffNames as sharedStaffNames } from '@/lib/db/staff-names';
 import type { Database, Json } from '@/lib/db/types.gen';
 import { parseCsv, toCsv } from '@/lib/domain/csv';
-import { bucketLabel, dietaryBreakdown, doorClosedWarning } from '@/lib/domain/dashboard';
+import { bucketLabel, doorClosedWarning } from '@/lib/domain/dashboard';
 import { formatEventDateTime } from '@/lib/domain/event-time';
 import { normalizeEmail, toSearchText } from '@/lib/domain/normalize';
 import { parseSheetId } from '@/lib/domain/sheet';
@@ -14,6 +15,7 @@ import { generateJoinCode, parseTeamName, parseTrackNames } from '@/lib/domain/t
 import { isJsonContentType } from '@/lib/http/content-type';
 import { syncSheet } from '@/lib/ingest/sync';
 import { withinLimit } from '@/lib/pass/handlers';
+import { cateringHackers, cateringToken, cateringUrl } from './catering';
 import { PHOTO_BUCKET } from '@/lib/storage/photos';
 
 type Db = SupabaseClient<Database>;
@@ -27,6 +29,8 @@ export interface AdminDeps {
   drain: () => Promise<unknown>;
   /** NEXT_PUBLIC_APP_ORIGIN: where invite emails send people to set their password. */
   appOrigin: string;
+  /** PASS_TOKEN_SECRET: also derives the Catering share link's key (v0.11.39). */
+  passSecret: string;
   now?: () => Date;
   /** Builds a reader for a linked Sheet, or null when Sync now isn't configured. */
   sheetReader?: (sheetId: string) => (() => Promise<string[][]>) | null;
@@ -193,13 +197,7 @@ export function createAdminApi(deps: AdminDeps) {
     async dashboard(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
-      // shortcut: PostgREST caps a read at 1000 rows; one event's accepted hackers are a few hundred.
-      const [m, event, diet] = await Promise.all([
-        metrics(g.eventId),
-        loadEvent(g.eventId),
-        db.from('participants').select('dietary_notes').eq('event_id', g.eventId).eq('status', 'accepted').is('deleted_at', null).eq('is_test', false),
-      ]);
-      if (diet.error) throw new Error(`dietary notes load failed (${diet.error.code})`);
+      const [m, event] = await Promise.all([metrics(g.eventId), loadEvent(g.eventId)]);
       const checkpoints = m.checkpoints.map((c) => ({
         ...c,
         fill: c.capacity ? round4(c.liveScans / c.capacity) : null,
@@ -223,12 +221,36 @@ export function createAdminApi(deps: AdminDeps) {
           return { bucketUtc, label: bucketLabel(bucketUtc, event.timezone), arrivals: a.arrivals };
         }),
         outbox: m.outbox,
-        dietary: dietaryBreakdown(diet.data.map((p) => p.dietary_notes)),
         alerts: {
           doorClosed: doorClosedWarning({ now: now(), startsAt: event.starts_at, endsAt: event.ends_at, doorOpen: door?.isOpen ?? false }),
           notFound: m.notFound,
         },
       });
+    },
+
+    // GET /api/admin/[slug]/catering (§11, v0.11.39): accepted, real, undeleted hackers' dietary notes and allergies,
+    // and the share link when there is one.
+    async catering(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const [hackers, link] = await Promise.all([
+        cateringHackers(db, g.eventId),
+        db.from('events').select('slug, catering_link_id').eq('id', g.eventId).single(),
+      ]);
+      if (link.error) throw new Error(`event load failed (${link.error.code})`);
+      const { slug, catering_link_id: linkId } = link.data;
+      return json({ hackers, shareUrl: linkId ? cateringUrl(deps.appOrigin, slug, cateringToken(deps.passSecret, linkId)) : null });
+    },
+
+    // POST /api/admin/[slug]/catering/link (§11, v0.11.39): a new share link; the previous one stops working at once.
+    async cateringLink(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const linkId = randomUUID();
+      const { data, error } = await db.from('events').update({ catering_link_id: linkId }).eq('id', g.eventId).select('slug').single();
+      if (error) throw new Error(`catering link update failed (${error.code})`);
+      await audit(g.eventId, g.userId, 'catering.link', g.eventId);
+      return json({ shareUrl: cateringUrl(deps.appOrigin, data.slug, cateringToken(deps.passSecret, linkId)) });
     },
 
     // GET /api/admin/[slug]/checkpoints

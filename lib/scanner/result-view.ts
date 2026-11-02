@@ -1,3 +1,4 @@
+import { dietaryGroups, noRestriction } from '@/lib/domain/dashboard';
 import type { ScanResponse } from '@/lib/scan/schema';
 
 // SPEC §10.2. Every state has an icon, a text label and a colour, never colour alone.
@@ -28,6 +29,8 @@ export interface ResultView {
   detail?: string;
   /** Shown bold, e.g. dietary notes at a meal. */
   emphasis?: string;
+  /** v0.11.39: the catering groups of their dietary notes at a meal, e.g. Halal, No pork. */
+  tags?: string[];
   name?: string;
   dismiss: { autoMs: number } | 'tap';
   action?: 'manual-search' | 'pick-checkpoint';
@@ -63,13 +66,16 @@ export function viewFor(outcome: Outcome, ctx: ViewContext): ResultView {
       // At a meal: the allergy first (v0.9), then the dietary notes.
       const p = ctx.checkpointKind === 'meal' ? r.participant : undefined;
       const allergy = p?.allergies ? `ALLERGY${p.allergySeverity ? ` (${p.allergySeverity.toUpperCase()})` : ''}: ${p.allergies}` : null;
-      const emphasis = [allergy, p?.dietaryNotes].filter(Boolean).join(' · ');
+      const note = p?.dietaryNotes && !noRestriction(p.dietaryNotes) ? p.dietaryNotes : null;
+      const emphasis = [allergy, note].filter(Boolean).join(' · ');
+      const tags = dietaryGroups(note);
       return {
         tone: 'green',
         icon: '✓',
         headline,
         ...who,
         ...(emphasis ? { emphasis } : {}),
+        ...(tags.length > 0 && { tags }),
         dismiss: { autoMs: GREEN_MS },
         sound: 'chime',
       };

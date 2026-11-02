@@ -59,16 +59,27 @@ export interface DietaryBreakdown {
   groups: Array<{ label: string; count: number }>;
 }
 
+/** v0.11.39: the groups one note falls in (Catering lists, meal scan tags). */
+export function dietaryGroups(note: string | null): string[] {
+  const text = toSearchText(note ?? '');
+  return DIET_GROUPS.filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
+}
+
+/** Blank, or "none", "N/A" and the like. */
+export function noRestriction(note: string | null): boolean {
+  const text = toSearchText(note ?? '');
+  return text === '' || NO_RESTRICTION.test(text);
+}
+
 export function dietaryBreakdown(notes: Array<string | null>): DietaryBreakdown {
   const counts = new Map<string, number>();
   let none = 0;
   let other = 0;
   for (const note of notes) {
-    const text = toSearchText(note ?? '');
-    const hits = DIET_GROUPS.filter(([, pattern]) => pattern.test(text));
-    for (const [label] of hits) counts.set(label, (counts.get(label) ?? 0) + 1);
+    const hits = dietaryGroups(note);
+    for (const label of hits) counts.set(label, (counts.get(label) ?? 0) + 1);
     if (hits.length === 0) {
-      if (text === '' || NO_RESTRICTION.test(text)) none += 1;
+      if (noRestriction(note)) none += 1;
       else other += 1;
     }
   }

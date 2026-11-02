@@ -14,12 +14,18 @@ const participant = { id: 'p1', displayName: 'Ada Lovelace', status: 'accepted',
 const server = (data: Partial<ScanResponse> & { code: ScanCode }) => ({ kind: 'server' as const, data: { serverTime: now.toISOString(), ...data } });
 
 describe('result screen mapping (SPEC §10.2)', () => {
-  it('T-SCUI-03: ACCEPTED headlines per checkpoint kind, green, auto-dismiss 2.5 s, chime', () => {
+  it('T-SCUI-03: ACCEPTED headlines per checkpoint kind, green, auto-dismiss 2.5 s, chime; meal dietary tags (v0.11.39)', () => {
     expect(viewFor(server({ code: 'ACCEPTED', participant }), ctx('door'))).toMatchObject({
       tone: 'green', icon: '✓', headline: 'ADMIT', name: 'Ada Lovelace', dismiss: { autoMs: 2500 }, sound: 'chime',
     });
     const meal = viewFor(server({ code: 'ACCEPTED', participant: { ...participant, dietaryNotes: 'Vegan, nut allergy' } }), ctx('meal'));
-    expect(meal).toMatchObject({ tone: 'green', headline: 'SERVE', emphasis: 'Vegan, nut allergy' });
+    expect(meal).toMatchObject({ tone: 'green', headline: 'SERVE', emphasis: 'Vegan, nut allergy', tags: ['Vegan', 'Nuts'] });
+    // v0.11.39: the catering groups as tags; a note that means no restriction shows nothing.
+    const halal = viewFor(server({ code: 'ACCEPTED', participant: { ...participant, dietaryNotes: 'Halal, no pork' } }), ctx('meal'));
+    expect(halal).toMatchObject({ emphasis: 'Halal, no pork', tags: ['Halal', 'No pork'] });
+    const none = viewFor(server({ code: 'ACCEPTED', participant: { ...participant, dietaryNotes: 'N/A' } }), ctx('meal'));
+    expect([none.emphasis, none.tags]).toEqual([undefined, undefined]);
+    expect(viewFor(server({ code: 'ACCEPTED', participant: { ...participant, dietaryNotes: 'Halal' } }), ctx('door')).tags).toBeUndefined();
     // v0.9: the allergy and its severity come first; never at the door.
     const allergic = { ...participant, dietaryNotes: 'Vegan', allergies: 'Peanuts', allergySeverity: 'severe' };
     expect(viewFor(server({ code: 'ACCEPTED', participant: allergic }), ctx('meal')).emphasis).toBe('ALLERGY (SEVERE): Peanuts · Vegan');

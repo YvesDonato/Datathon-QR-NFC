@@ -91,6 +91,17 @@ test('T-SCUI-03: a problem result stays until tapped (no auto-dismiss)', async (
   await expect(page.getByTestId('scan-result')).toBeVisible();
 });
 
+test('T-SCUI-03: SERVE at a meal shows the dietary groups as tags above the note (v0.11.39)', async ({ page }) => {
+  await openScanner(page, 'Lunch');
+  await stubScan(page, { code: 'ACCEPTED', replayed: false, scanId: randomUUID(), participant: { ...ada, dietaryNotes: 'Halal, no pork' } });
+  await recordAda(page);
+  const result = page.getByTestId('scan-result');
+  await expect(result).toContainText('SERVE');
+  if (process.env.HOVER_SCREENSHOTS) await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/serve-tags.png` });
+  await expect(result.getByTestId('diet-tags').getByRole('listitem')).toHaveText(['Halal', 'No pork']);
+  await expect(result).toContainText('Halal, no pork');
+});
+
 test('T-SCUI-04: a hanging /api/scan is retried twice with the same clientScanId, then NO RESULT; never green', async ({ page }) => {
   await page.clock.install();
   const bodies: string[] = [];

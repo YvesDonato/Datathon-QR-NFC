@@ -39,6 +39,7 @@ beforeAll(async () => {
   // T-ANA-07: A is Vegetarian (fixture); only accepted, real, undeleted hackers count.
   const diet = [[f.p.B, 'Halal'], [f.p.T, 'Vegan'], [f.p.C, 'Kosher'], [f.p.Wd, 'Vegan']] as const;
   for (const [id, note] of diet) await f.pool.query(`update participants set dietary_notes = $2 where id = $1`, [id, note]);
+  await f.pool.query(`update participants set allergies = 'Peanuts', allergy_severity = 'severe' where id = any($1)`, [[f.p.A, f.p.T]]);
 });
 afterAll(async () => {
   await f.close();
@@ -79,17 +80,16 @@ describe('dashboard analytics (SPEC §13)', () => {
     expect(byName.Door).toBe(3); // T (is_test) and Z (deleted) not counted
   });
 
-  it('T-ANA-07: dietary restrictions of accepted hackers, grouped, excluding test, waitlisted, withdrawn and deleted people', async () => {
-    const body = obj((await c.call('dashboard', org, { slug: f.slug })).body);
-    expect(body.dietary).toEqual({
-      total: 4, // A, B, Rv, N
-      none: 2, // Rv, N
-      other: 0,
-      groups: [
-        { label: 'Halal', count: 1 },
-        { label: 'Vegetarian', count: 1 },
-      ],
-    });
+  it('T-ANA-07: Catering lists accepted hackers’ dietary notes and allergies, excluding test, waitlisted, withdrawn and deleted people (v0.11.39)', async () => {
+    const { status, body } = await c.call('catering', org, { slug: f.slug });
+    expect(status).toBe(200);
+    expect(obj(body).hackers).toEqual([
+      { id: f.p.A, name: 'Ada Fixture', dietaryNotes: 'Vegetarian', allergies: 'Peanuts', allergySeverity: 'severe' },
+      { id: f.p.B, name: 'Ben Fixture', dietaryNotes: 'Halal', allergies: null, allergySeverity: null },
+      { id: f.p.N, name: 'Nia Fixture', dietaryNotes: null, allergies: null, allergySeverity: null },
+      { id: f.p.Rv, name: 'Rae Fixture', dietaryNotes: null, allergies: null, allergySeverity: null },
+    ]);
+    expect(obj((await c.call('dashboard', org, { slug: f.slug })).body)).not.toHaveProperty('dietary'); // moved to Catering
   });
 
   it('T-ANA-06: session ranking ties are sorted by name ascending', async () => {

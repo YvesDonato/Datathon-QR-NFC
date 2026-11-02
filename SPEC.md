@@ -1,6 +1,6 @@
 # Sheridan Datathon Station — Product & Technical Specification
 
-> **Status:** Draft v0.11.38 · **Owner:** Ade · **Last updated:** 2026-11-02
+> **Status:** Draft v0.11.39 · **Owner:** Ade · **Last updated:** 2026-11-02
 > The app is **Station** (Sheridan Datathon Station, `https://station.sheridandatathon.com`); it was called Passline until v0.11.21.
 
 ## 0. How to read this document
@@ -86,6 +86,8 @@ The following are out of scope for v1:
 | Invite/remove staff | — | — | — | ✅ |
 | Organizer on every event without an invite | — | — | — | ✅ only an account whose email is in `ADMIN_EMAILS` (F9) |
 | Dashboard, analytics, CSV export | — | — | — | ✅ |
+| Catering page (dietary groups and allergies by name), and its share link (v0.11.39) | — | — | — | ✅ |
+| Read the Catering page through the organizers' share link (`/catering/<slug>#key`, v0.11.39) | ✅ link holder only | | | |
 | Sheet ingest endpoint | HMAC-signed Apps Script only | | | |
 | Answer an RSVP (`/rsvp#token`), and set a first password | RSVP link holder only | | | |
 | Send RSVPs to chosen applicants; revoke someone's RSVP (v0.9.1) | — | — | — | ✅ |
@@ -413,6 +415,7 @@ Composite foreign keys keep a team's track and members in its own event. **v0.11
 ```sql
 alter table events add column rsvp_deadline timestamptz;  -- null: no deadline (F13)
 alter table events add column rsvp_reply_by timestamptz;  -- v0.11.28: the date shown to invitees; never after rsvp_deadline
+alter table events add column catering_link_id uuid;      -- v0.11.39: the Catering share link (§11); null: none
 create table reminder_runs (event_id uuid not null references events on delete cascade,
   kind text not null check (kind in ('rsvp','profile')), run_on date not null,
   primary key (event_id, kind, run_on));                  -- each reminder day fires once
@@ -425,7 +428,7 @@ alter table participants
   add column accessibility text check (length(accessibility) between 1 and 500),
   add constraint participants_allergy_pair check ((allergies is null) = (allergy_severity is null));
 ```
-A profile is **finished** once the emergency contact, `overnight` and `team_status` are set (computed, not stored). Allergies and accessibility needs are personal data like the emergency contact (§5.4): organizers only (allergies also on accepted meal scans, F7), never in logs or `audit_log.detail`, deleted by the tombstone and by retention. The participants CSV carries overnight, team status and allergies (for catering and rooms), never accessibility or the emergency contact.
+A profile is **finished** once the emergency contact, `overnight` and `team_status` are set (computed, not stored). Allergies and accessibility needs are personal data like the emergency contact (§5.4): organizers only (allergies also on accepted meal scans, F7, and, with names and dietary notes, to anyone holding the organizers' Catering share link, v0.11.39, owner's decision), never in logs or `audit_log.detail`, deleted by the tombstone and by retention. The participants CSV carries overnight, team status and allergies (for catering and rooms), never accessibility or the emergency contact.
 
 ### 5.7 Hacker directory (F16)
 
@@ -937,6 +940,8 @@ Unknown `event_slug` returns `404`. An invalid `linkedin_url` is dropped (set to
 | `GET /profile/:uid` | anyone (v0.9) | Badge profile page (§6.5); an unlinked badge says staff link badges at the check-in desk (v0.10; no self-claim) |
 | `POST /api/cron` (also `GET`, v0.10.1, for Vercel Cron) | `Authorization: Bearer DRAIN_SECRET` | v0.9: `run_rsvp_jobs()` (deadline, F13; profile reminder, F14; RSVP reminders only until v0.11.35), then drain the outbox even if the jobs failed; `{ jobs, claimed }`. Every 5 minutes from the scheduler (F4) |
 | `POST /api/admin/:slug/participants/rsvp` | organizer | Queue RSVPs: `{ ids }` → `{ queued }` (F13) |
+| `GET /api/admin/:slug/catering`, `POST …/catering/link` | organizer | v0.11.39: accepted, real, undeleted hackers `{ id, name, dietaryNotes, allergies, allergySeverity }` by name, and `shareUrl` (null without a link); POST makes a new link (the old one stops working) → `{ shareUrl }`, audit `catering.link` with `{}` (§11) |
+| `POST /api/catering` | the share link's key in the body; 30 req/min per link, 600/min per IP | v0.11.39: `{ slug, token }` → `{ event: { name }, hackers }` as above; 404 `{ state: 'not_found' }` for an unknown event, no link, a wrong or reset key, or 30 days after the event ends (§11) |
 | `POST /api/rsvp` | RSVP token in body; 30 req/min per link, 600/min per IP (v0.11.25) | `{ token }` → invitation + `profile` prefill; `{ token, going, password, emergencyName, emergencyPhone, emergencyRelation?, dietaryNotes?, linkedin?, profilePublic?, lookingForTeam? }` → `{ code: 'GOING' \| 'NOT_GOING', signedIn, next? }` (F13; `next` is where to go once signed in; JSON bodies only; the emergency contact and a password are required on Yes: 400 `password_required`, `weak_password` or `wrong_password`) |
 | `GET /me` | signed in | The hacker menu for the signed-in person's event (F14, v0.6.1), with their pass (§6.1), and staff links |
 | `GET /me/profile`, `/me/schedule`, `/me/emergency` | signed-in accepted attendee | Hacker menu pages (F14); profile and emergency saves are server actions calling `save_hacker_profile()` |
@@ -974,7 +979,7 @@ Every state needs an icon, a text label and a color, never color alone. Names ar
 | Code | Color | Headline | Dismiss |
 |------|-------|----------|---------|
 | ACCEPTED (door) | green ✓ | **ADMIT** + name | auto 2.5 s |
-| ACCEPTED (meal) | green ✓ | **SERVE** + name + allergy with severity (v0.9, first) and dietary notes (bold if present) | auto 2.5 s |
+| ACCEPTED (meal) | green ✓ | **SERVE** + name + the dietary groups as tags (v0.11.39, e.g. HALAL, NO PORK; §13's `dietaryGroups()`) + allergy with severity (v0.9, first) and dietary notes (bold if present; none-like notes such as "N/A" hidden) | auto 2.5 s |
 | ACCEPTED (session/custom) | green ✓ | **RECORDED** + name | auto 2.5 s |
 | ACCEPTED `replayed` | green ✓ | same as ACCEPTED, "(confirmed)" | auto 2.5 s |
 | ALREADY_SCANNED, `scannedByMe` and < 60 s ago | amber ⟳ | "You scanned this 8 s ago" | tap |
@@ -1041,8 +1046,9 @@ After a volunteer's own scan, "Undo last" is visible for 120 s. It asks for a re
 
 | Page | Contents |
 |------|----------|
-| Dashboard | Live counts per checkpoint (10 s poll). Door check-in rate. Meals served vs checked in. Arrivals chart (15-min buckets). Outbox pending/failed. `NOT_FOUND` spike alert. **Warning if within 30 min of `starts_at` and the door is closed.** Dietary restrictions (v0.11.36): one bar per group with its count and share of accepted hackers (§13). |
+| Dashboard | Live counts per checkpoint (10 s poll). Door check-in rate. Meals served vs checked in. Arrivals chart (15-min buckets). Outbox pending/failed. `NOT_FOUND` spike alert. **Warning if within 30 min of `starts_at` and the door is closed.** (v0.11.36 to v0.11.38 also charted dietary restrictions; on Catering since v0.11.39.) |
 | Participants | Search/filter by status (v0.11.27: the filter offers pending, accepted and withdrawn, the only ones Station sets since v0.4), pass state, scans, and (v0.11.27) by what the Sheet decided: an **In the Sheet** column (Accepted, Waitlisted or —) with a filter of the same name (F10). Tick applicants and **Send RSVP** (F13); pending rows show "RSVP sent", or "RSVP email failed: send it again" when their newest RSVP email failed for good (v0.11.25). **Add attendee**: a walk-in, or **Not RSVPed yet** for a pending applicant (F12, v0.7.1). **Revoke RSVP** (v0.9.1, e.g. after a test; confirm first) on anyone invited or answered: their link stops working, waiting email is cancelled, any pass is cancelled (`status_change`, so a Yes to a new RSVP issues a fresh one) and the badge unlinked, and they are pending with no RSVP sent; profile and account stay (`revoke_rsvp()`, audit `rsvp.reset` with `{}`). Actions: resend pass (confirm: "their old code will stop working"), revoke, add walk-in, delete (tombstone), view scan history, void a scan. The detail shows the hacker's emergency contact, with a `tel:` link (v0.6), and their profile setup answers (v0.9). **Badges (v0.10):** rows show "Badge linked"; accepted rows get **Link badge** / **Replace badge** where Web NFC exists (Android Chrome; no button elsewhere): a dialog "Tap the badge to link it to {name}" runs the reader until one good tap and any profile-link write (§6.5) finishes, then `POST /api/events/:slug/badges` (an organizer's link moves a badge linked to someone else) and the outcome is the page's status message (`linkNotice()`), never a green screen. If Chrome refuses NFC, the dialog's **Start badge reader** retries. **Unlink badge** (confirm first): the badge stops scanning and showing their profile until staff link it again (`DELETE …/participants/:id/badge`); a badge already gone (moved, or the attendee said No) says "That badge was already unlinked". |
+| Catering (v0.11.39, owner's request) | Accepted, real, undeleted hackers only (§13). The dietary restrictions chart (§13: one bar per group with its count and share); **Who’s in each group**: a card per group with the names (someone in two groups is in both), and Other with each person's note; **Allergies**: name, allergy and severity, severe first, then moderate and mild (severity as text, never colour alone). **Copy link** (top right) copies a share link `${APP_ORIGIN}/catering/<slug>#key`, making it the first time; anyone holding it sees this page read-only without signing in (owner's decision: names, notes and allergies included). The key is derived like a pass token from the event's random `catering_link_id` (`HMAC(PASS_TOKEN_SECRET, 'catering:' + id)`, §6.1), so only the id is stored, and it travels only in the URL fragment. **Reset link** (confirm first) replaces the id, so the old link stops working at once. Every link stops working 30 days after the event ends, when retention deletes the notes (§15). The shared page is `noindex`, sends no referrer, and its API is rate-limited per link. |
 | Checkpoints | CRUD, open/close toggle, capacity, requires_checkin, sort order. Deleting a checkpoint with scans is blocked. **People** (v0.8): who was scanned there, newest first, with **Remove** (a void with a reason, F11). |
 | Staff | Invite by email + role, list, remove. |
 | Info (v0.6) | **RSVP deadline** (labelled **RSVPs close** since v0.11.28) and **Reply by** (v0.11.28) only (v0.9, in the event timezone, F13), saved with `PATCH /api/admin/:slug/event`; audit `event.info` with `{}`. **Owner’s decision (v0.11.11):** Schedule and Emergency info are set through the same API (`schedule`, `emergencyInfo`), with no fields on this page. The stored text still appears on the hacker Schedule and Emergency contact pages (F14). |
@@ -1094,7 +1100,7 @@ All metrics exclude voided scans, `is_test` participants and deleted participant
 | Session attendance | live scans per session; ranking by count desc, then name asc |
 | Session fill | live scans ÷ capacity (if set) |
 | Arrival curve | live door scans per 15-min bucket |
-| Dietary restrictions (v0.11.36) | accepted hackers' dietary notes grouped by keyword (`dietaryBreakdown()`): Vegetarian, Vegan, Pescatarian, Halal, Kosher, Gluten-free, Dairy-free, Nuts, Seafood/shellfish, No pork, No beef, Eggs; a note can be in several groups; a note in none is Other, or No restrictions when blank or "none", "N/A" and the like. Each count ÷ accepted |
+| Dietary restrictions (v0.11.36; on the Catering page since v0.11.39) | accepted hackers' dietary notes grouped by keyword (`dietaryBreakdown()`; one note's groups: `dietaryGroups()`): Vegetarian, Vegan, Pescatarian, Halal, Kosher, Gluten-free, Dairy-free, Nuts, Seafood/shellfish, No pork, No beef, Eggs; a note can be in several groups; a note in none is Other, or No restrictions when blank or "none", "N/A" and the like. Each count ÷ accepted |
 | Scan problems | `scan_attempts` grouped by `result_code`, per checkpoint. For the post-event review (§16); not shown on the dashboard since v0.7.4 |
 
 ```sql
@@ -1298,7 +1304,7 @@ select a.checkpoint_id as x, b.checkpoint_id as y, count(*) as both_attended
 |----|----------|----------|---|
 | T-SCUI-01 | Fake camera shows A's QR | ADMIT screen < 1.5 s after page ready | E |
 | T-SCUI-02 | Same QR stays in frame for 10 s | exactly 1 `/api/scan` request (route interception count) | E |
-| T-SCUI-03 | Each `ScanCode` stubbed via route interception | correct color, icon, text label, dismiss rule per §10.2 (screenshot + DOM assertions) | E |
+| T-SCUI-03 | Each `ScanCode` stubbed via route interception; v0.11.39: ACCEPTED at a meal with "Vegan, nut allergy", "Halal, no pork" and "N/A" | correct color, icon, text label, dismiss rule per §10.2 (screenshot + DOM assertions); tags Vegan and Nuts, then HALAL and NO PORK chips above the note, then no tags or note | U+E |
 | T-SCUI-04 | `/api/scan` hangs | 2 retries with the same `clientScanId` (assert request bodies), then NETWORK screen; never green | E |
 | T-SCUI-05 | `context.setOffline(true)` | OFFLINE banner; scanning disabled; manual scan disabled | E |
 | T-SCUI-06 | QR encoding `https://example.com` | "Not a Datathon code"; zero `/api/scan` requests | E |
@@ -1346,7 +1352,8 @@ select a.checkpoint_id as x, b.checkpoint_id as y, count(*) as both_attended
 | T-ANA-04 | `toCsv` with `=SUM(A1)`, `+1`, `-1`, `@x`, `"quoted"`, `a,b`, newline | guarded/escaped per §13; starts with BOM; CRLF | U |
 | T-ANA-05 | Export as volunteer | 403 | I |
 | T-ANA-06 | Session ranking tie | sorted by name asc | I |
-| T-ANA-07 | v0.11.36: dietary notes "Vegetarian", "VEGAN", "Halal, no pork", "Gluten free / celiac", "lactose intolerant", "Peanuts!", "Végétarian", "veg", "N/A", "None.", blank, "Non-vegetarian", "No dietary restrictions", "low FODMAP"; the dashboard with notes on accepted, test, waitlisted and withdrawn people; in the browser | each in its groups (Halal and No pork both), the none-like ones as No restrictions, "low FODMAP" as Other; only accepted, real, undeleted hackers counted; rows "Vegetarian 2 · 50%" … "No restrictions 1 · 25%", "Out of 4 accepted hackers", no sideways scroll at 390 px | U+I+E |
+| T-ANA-07 | v0.11.36: dietary notes "Vegetarian", "VEGAN", "Halal, no pork", "Gluten free / celiac", "lactose intolerant", "Peanuts!", "Végétarian", "veg", "N/A", "None.", blank, "Non-vegetarian", "No dietary restrictions", "low FODMAP"; v0.11.39: `dietaryGroups` and `noRestriction` on single notes; the Catering API with notes and allergies on accepted, test, waitlisted and withdrawn people; in the browser: the Dashboard, then the Catering tab | each in its groups (Halal and No pork both), the none-like ones as No restrictions, "low FODMAP" as Other; only accepted, real, undeleted hackers listed, by name, never email, and the Dashboard has no `dietary`; no chart on the Dashboard; rows "Vegetarian 2 · 50%" … "Other 1 · 25%", "Out of 4 accepted hackers", the names under each group, Other with its note, allergies severe first, no test participant, no sideways scroll at 390 px | U+I+E |
+| T-ANA-08 | v0.11.39 Catering share link: before any link; a volunteer makes one; the organizer makes one; the shared API with it; a wrong key, another event, an unknown slug, extra keys, no key; Reset link, then the old and new keys; 29 and 31 days after the event ends; 31 requests in a minute. In the browser: Copy link, the link in a fresh browser with no session, Reset link | `shareUrl` null; 403; `/catering/<slug>#<32 chars>`, the same URL on reload, one `catering.link` audit row with `{}`, only the random id stored; the same hackers as the organizer sees, no emails; 404 ×3, 400 ×2; old 404 `not_found`, new 200; 200, 404; the 31st is 429. Copied and announced; the list without signing in and the key in no request URL; confirm, a new link copied, the old one says it doesn't work and shows no names | I+E |
 
 ### 14.12 Security & privacy — `T-SEC`, `T-PRIV`
 | ID | Scenario | Expected | L |
@@ -1354,7 +1361,7 @@ select a.checkpoint_id as x, b.checkpoint_id as y, count(*) as both_attended
 | T-SEC-01 | For **every** table in `public` (enumerated from `pg_tables`): select/insert/update/delete with the anon key and with an authenticated user JWT | denied or 0 rows | I |
 | T-SEC-02 | `pg_tables.rowsecurity` for every public table | all true | I |
 | T-SEC-03 | After `next build`, grep `.next/static` for `SERVICE_ROLE` and the key's value | not found | CI |
-| T-SEC-04 | Enumerate every route handler file; call each unauthenticated | 401 (except `/api/pass*`, `/api/rsvp`, `/api/ingest/sheet`, `/api/email/drain` with their own auth) | I |
+| T-SEC-04 | Enumerate every route handler file; call each unauthenticated | 401 (except `/api/pass*`, `/api/rsvp`, `/api/ingest/sheet`, `/api/email/drain` and, v0.11.39, `/api/catering`, with their own auth) | I |
 | T-SEC-05 | Capture server logs during the full e2e flow | contain no token, no email, no participant name, no emergency contact (v0.6) | E |
 | T-SEC-06 | Response headers | CSP present; `frame-ancestors 'none'`; `Permissions-Policy: camera=(self)`; HSTS in prod | E |
 | T-SEC-07 | Every view | `security_invoker = true`; no grant to anon/authenticated | I |
@@ -1515,6 +1522,7 @@ Target: at least 95% of attempts under 3 s.
   | `NOT_FOUND` per staff | 30 / 5 min → 429 + alert |
   | `/api/pass` per pass (v0.11.25: was per IP; a venue's Wi-Fi is one IP) | 30 / min, plus 600 / min per IP against scraping |
   | `/api/rsvp` per invitation link (v0.11.25: was per IP) | 30 / min, plus 600 / min per IP |
+  | `/api/catering` per share link (v0.11.39) | 30 / min, plus 600 / min per IP |
   | Password sign-ins per email | 10 / 15 min (then refused like a wrong password) |
   | Password sign-ins per machine (PR #11; v0.11.30: venue scale, a campus's Wi-Fi is one IP) | 600 / 15 min (then refused like a wrong password) |
   | RSVP Yes password checks per email (v0.7.2; its own bucket) | 10 / 15 min (then refused like a wrong password) |
@@ -1648,6 +1656,8 @@ Each slice ends with its tests green in CI and a short demo.
 ---
 
 ## 20. Changelog
+
+- **v0.11.39 (2026-11-02)** — Owner's requests. A **Catering** admin page: the dietary restrictions chart moves there from the Dashboard, with who is in each group (names; Other with each note) and the accepted hackers' allergies with severity, severe first (`GET /api/admin/:slug/catering`). Its **Copy link** button shares the page read-only without signing in, like a doc's "anyone with the link" (owner's decision: names, notes and allergies included): `/catering/<slug>#key`, the key derived from a random `events.catering_link_id` like a pass token and carried only in the fragment, **Reset link** to kill it, dead 30 days after the event, rate-limited per link (`POST /api/admin/:slug/catering/link`, `POST /api/catering`; migration `20261102201120_catering_link`). Meal scans show the person's dietary groups as tags (e.g. HALAL, NO PORK) above their note, and a none-like note ("N/A") is no longer shown. §3, §5.6, §9.3, §10.2, §11, §13, §15; T-ANA-07 and T-SCUI-03 extended, new T-ANA-08.
 
 - **v0.11.38 (2026-11-02)** — The RSVP reminder's sender name is "Urgent" instead of "Jobs" (owner's request); same address, subject and body. §12; T-RSVP-10/11 updated.
 

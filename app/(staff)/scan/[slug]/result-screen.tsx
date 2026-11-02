@@ -23,7 +23,7 @@ export function ResultScreen({ view, shownAt, onDismiss }: { view: ResultView; s
     };
   }, []);
 
-  const announcement = [view.headline, view.name, view.emphasis, view.detail].filter(Boolean).join('. ');
+  const announcement = [view.headline, view.name, view.tags?.join(', '), view.emphasis, view.detail].filter(Boolean).join('. ');
 
   return (
     <div
@@ -56,6 +56,13 @@ export function ResultScreen({ view, shownAt, onDismiss }: { view: ResultView; s
         </span></Entrance>
         <strong className="text-[clamp(28px,_4vw,_40px)] font-bold tracking-tight m-0">{view.headline}</strong>
         {view.name && <span className="text-[clamp(32px,_3vw,_38px)] font-bold m-0 [overflow-wrap:anywhere]">{view.name}</span>}
+        {view.tags && (
+          <ul className="m-0 flex list-none flex-wrap justify-center gap-2 p-0" data-testid="diet-tags">
+            {view.tags.map((tag) => (
+              <li key={tag} className="rounded-card border-2 border-white bg-white px-[14px] py-[6px] text-[22px] font-extrabold uppercase tracking-wide text-[#14532d]">{tag}</li>
+            ))}
+          </ul>
+        )}
         {view.emphasis && <span className="text-[22px] font-extrabold [background:rgba(0,_0,_0,_0.22)] [border-width:1px] [border-style:solid]
 
             [border-color:rgba(255,_255,_255,_0.18)] p-[10px_16px] rounded-card">{view.emphasis}</span>}

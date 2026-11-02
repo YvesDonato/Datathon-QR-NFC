@@ -11,7 +11,7 @@ const plural = (n: number, word: string) => `${n.toLocaleString('en-US')} ${word
 // The longest bar stops short of the edge, leaving room for its count (like the Team page's tracks chart).
 const SPAN = 0.86;
 
-// §11 (v0.11.36): accepted hackers' dietary restrictions by group, drawn like the Team page's Teams per track chart.
+// §11 (v0.11.36; on Catering since v0.11.39): accepted hackers' dietary restrictions by group, drawn like the Team page's Teams per track chart.
 // Each row names its group and carries its count and share as text, never colour alone.
 export function DietaryChart({ dietary }: { dietary: DietaryBreakdown }) {
   const { total, none, other, groups } = dietary;
@@ -24,7 +24,7 @@ export function DietaryChart({ dietary }: { dietary: DietaryBreakdown }) {
   const x = (n: number) => `${(n / max) * SPAN * 100}%`;
 
   return (
-    <Card asChild className="grid gap-3 mt-[38px] max-[600.001px]:mt-[30px] [&>p]:m-0">
+    <Card asChild className="grid gap-3 [&>p]:m-0">
       <section aria-labelledby="dietary-heading" data-testid="dietary-chart">
         <h2 id="dietary-heading" className="m-0 text-lg">Dietary restrictions</h2>
         {total === 0 ? (

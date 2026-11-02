@@ -6,7 +6,7 @@ import { createStandardFixture, type StandardFixture } from '../fixtures/standar
 const ORG = authStatePath('admin-org');
 const VOL = authStatePath('admin-vol');
 const OTHER_ORG = authStatePath('admin-other-org');
-const PAGES = ['', '/participants', '/teams', '/checkpoints', '/staff', '/info', '/export', '/tools'];
+const PAGES = ['', '/participants', '/teams', '/checkpoints', '/catering', '/staff', '/info', '/export', '/tools'];
 
 test.describe.configure({ mode: 'serial' });
 test.use({ storageState: ORG });
@@ -158,22 +158,76 @@ test('T-ADM-06: arrival bars keep UTC order across local days and expose hover/f
   await expect(page.getByRole('row', { name: /Sun 7:30 PM EST–7:45 PM EST 2/ })).toBeVisible();
 });
 
-test('T-ANA-07: the dashboard charts accepted hackers’ dietary restrictions with counts and shares', async ({ page }) => {
-  // A is Vegetarian (fixture); T is a test participant, so their note doesn't count.
-  for (const [who, note] of [['B', 'Halal, no pork'], ['N', 'veggie'], ['T', 'Vegan']] as const) {
+test('T-ANA-07: Catering charts accepted hackers’ dietary restrictions, lists who is in each group, and their allergies (v0.11.39)', async ({ page }) => {
+  // A is Vegetarian (fixture); T is a test participant, so their note and allergy don't count.
+  for (const [who, note] of [['B', 'Halal, no pork'], ['N', 'veggie'], ['Rv', 'low FODMAP'], ['T', 'Vegan']] as const) {
     await f.pool.query('update participants set dietary_notes = $2 where id = $1', [f.p[who], note]);
   }
+  for (const [who, allergy, severity] of [['A', 'Shellfish', 'mild'], ['N', 'Peanuts', 'severe'], ['T', 'Eggs', 'severe']] as const) {
+    await f.pool.query('update participants set allergies = $2, allergy_severity = $3 where id = $1', [f.p[who], allergy, severity]);
+  }
   await page.goto(`/admin/${f.slug}`);
+  await expect(page.getByTestId('kpi-accepted')).toBeVisible();
+  await expect(page.getByTestId('dietary-chart')).toHaveCount(0); // moved off the Dashboard
+  await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: 'Catering' }).click();
+
   const chart = page.getByTestId('dietary-chart');
-  await expect(chart.getByRole('group')).toHaveText([/^Vegetarian\s*2\s*· 50%$/, /^Halal\s*1\s*· 25%$/, /^No pork\s*1\s*· 25%$/, /^No restrictions\s*1\s*· 25%$/]);
+  await expect(chart.getByRole('group')).toHaveText([/^Vegetarian\s*2\s*· 50%$/, /^Halal\s*1\s*· 25%$/, /^No pork\s*1\s*· 25%$/, /^Other\s*1\s*· 25%$/]);
   await expect(chart).toContainText('Out of 4 accepted hackers');
   await expect(chart.getByRole('group', { name: 'Halal: 1 hacker, 25%' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Vegetarian' }).getByRole('listitem')).toHaveText(['Ada Fixture', 'Nia Fixture']);
+  await expect(page.getByRole('region', { name: 'Halal' }).getByRole('listitem')).toHaveText(['Ben Fixture']);
+  await expect(page.getByRole('region', { name: 'Other' }).getByRole('listitem')).toHaveText(['Rae Fixture: low FODMAP']);
+  await expect(page.getByRole('row')).toHaveText([/Name\s*Allergy\s*Severity/, /Nia Fixture\s*Peanuts\s*⚠ Severe/, /Ada Fixture\s*Shellfish\s*mild/i]);
+  await expect(page.locator('main')).not.toContainText('Tess'); // the test participant
+  // Search by name narrows the lists and the allergy table, never the chart; case and accents don't matter.
+  await page.getByLabel('Search by name').fill('NÍA');
+  await expect(page.getByRole('region', { name: 'Vegetarian' }).getByRole('listitem')).toHaveText(['Nia Fixture']);
+  await expect(page.getByRole('region', { name: 'Vegetarian' })).toContainText('1 of 2 hackers');
+  await expect(page.getByRole('region', { name: 'Halal' })).toHaveCount(0);
+  await expect(page.getByRole('row')).toHaveText([/Name\s*Allergy\s*Severity/, /Nia Fixture\s*Peanuts\s*⚠ Severe/]);
+  await expect(chart.getByRole('group')).toHaveCount(4);
+  await page.getByLabel('Search by name').fill('zzz');
+  await expect(page.getByText('Nobody here matches “zzz”.')).toHaveCount(2);
+  await page.getByLabel('Search by name').fill('');
   for (const [width, height] of [[1440, 900], [390, 844]] as const) {
     await page.setViewportSize({ width, height });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await chart.scrollIntoViewIfNeeded();
-    if (process.env.HOVER_SCREENSHOTS) await chart.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/dietary-${width}.png` });
+    if (process.env.HOVER_SCREENSHOTS) await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/catering-${width}.png`, fullPage: true });
   }
+});
+
+test('T-ANA-08: Copy link shares Catering read-only without signing in; Reset link kills the old link (v0.11.39)', async ({ page, browser, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await f.pool.query('update participants set dietary_notes = $2 where id = $1', [f.p.B, 'Halal']);
+  await page.goto(`/admin/${f.slug}/catering`);
+  await expect(page.getByRole('button', { name: 'Reset link' })).toHaveCount(0); // no link yet
+  await page.getByRole('button', { name: 'Copy link' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Link copied' })).toBeVisible();
+  const url = await page.evaluate(() => navigator.clipboard.readText());
+  expect(url).toMatch(new RegExp(`/catering/${f.slug}#[A-Za-z0-9_-]{32}$`));
+
+  // A fresh browser with no session: the page loads, and the key never appears in a request URL.
+  const anon = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const shared = await anon.newPage();
+  const urls: string[] = [];
+  shared.on('request', (r) => urls.push(r.url()));
+  await shared.goto(url);
+  await expect(shared.getByRole('region', { name: 'Halal' }).getByRole('listitem')).toHaveText(['Ben Fixture']);
+  await expect(shared.getByText(`${f.e1.name} · shared by the organizers, read-only`)).toBeVisible();
+  await expect(shared.getByRole('button', { name: 'Copy link' })).toHaveCount(0);
+  const key = url.split('#')[1] ?? '';
+  expect(urls.filter((u) => u.includes(key))).toEqual([]);
+
+  // Reset: confirm, a new link is copied, and the old one shows the not-working message.
+  await page.getByRole('button', { name: 'Reset link' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Reset link' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'The old one no longer works' })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).not.toBe(url);
+  await shared.reload();
+  await expect(shared.locator('main').getByRole('alert')).toHaveText(/This link doesn’t work/); // Next's route announcer is an alert too
+  await expect(shared.locator('main')).not.toContainText('Ben');
+  await anon.close();
 });
 
 test('Admin smoke: walk-in with check-in shows as checked in; void a scan; exports are CSV', async ({ page }) => {
