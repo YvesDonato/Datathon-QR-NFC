@@ -15,6 +15,8 @@ export function CheckpointPicker(props: {
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [pending, setPending] = useState<Checkpoint | null>(null);
+  // v0.11.41 (owner's request): only open checkpoints are offered; organizers open them on the Checkpoints page.
+  const open = props.checkpoints.filter((cp) => cp.isOpen);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -55,8 +57,9 @@ export function CheckpointPicker(props: {
         <>
           <h2 id="picker-title">Choose your checkpoint</h2>
           {props.checkpoints.length === 0 && <p>This event has no checkpoints yet. Ask an organizer.</p>}
+          {props.checkpoints.length > 0 && open.length === 0 && <p>No checkpoint is open right now. Ask an organizer to open one.</p>}
           <div className="grid gap-[10px] m-[20px_0px]">
-            {props.checkpoints.map((cp) => (
+            {open.map((cp) => (
               <Button
                 key={cp.id}
                 type="button"
@@ -66,7 +69,7 @@ export function CheckpointPicker(props: {
               >
                 <span aria-hidden="true">{KIND_ICON[cp.kind]}</span>
                 <span>
-                  {cp.name} <small>· {KIND_LABEL[cp.kind]}{cp.isOpen ? '' : ' · closed'}</small>
+                  {cp.name} <small>· {KIND_LABEL[cp.kind]}</small>
                 </span>
               </Button>
             ))}

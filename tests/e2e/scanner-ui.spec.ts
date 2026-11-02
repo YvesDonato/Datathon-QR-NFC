@@ -149,6 +149,33 @@ test('T-SCUI-07: changing checkpoint asks for confirmation, updates the banner a
   await expect(page.getByRole('heading', { name: 'Choose your checkpoint' })).toBeHidden();
 });
 
+test('T-SCUI-07: the picker lists only open checkpoints, reloaded each time it opens; a closed saved checkpoint is not restored (v0.11.41)', async ({ page }) => {
+  const setRaffle = (open: boolean) => f.pool.query('update checkpoints set is_open = $2 where id = $1', [f.cp.R, open]);
+  await setRaffle(false);
+  try {
+    await openScanner(page, 'Door');
+    const dialog = page.getByRole('dialog');
+    await page.getByRole('button', { name: 'Change' }).click();
+    await expect(dialog.getByRole('button', { name: /^Door · Check-in$/ })).toBeVisible(); // the door kind reads Check-in
+    await expect(dialog.getByRole('button', { name: /Lunch/ })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /Raffle/ })).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+    await setRaffle(true); // an organizer opens it: the next Change shows it, no page reload needed
+    await page.getByRole('button', { name: 'Change' }).click();
+    await dialog.getByRole('button', { name: /Raffle/ }).click();
+    await page.getByRole('button', { name: 'Switch to Raffle' }).click();
+    await expect(page.getByTestId('checkpoint-banner')).toContainText('Raffle');
+
+    await setRaffle(false); // closed while saved on this phone: a reload asks again instead of restoring it
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Choose your checkpoint' })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('button', { name: /Raffle/ })).toHaveCount(0);
+  } finally {
+    await setRaffle(true);
+  }
+});
+
 test('T-SCUI-09: "Undo last" is visible for 120 s after my accepted scan, then hidden', async ({ page }) => {
   await page.clock.install();
   await openScanner(page);

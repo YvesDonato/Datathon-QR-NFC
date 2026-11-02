@@ -183,23 +183,59 @@ describe('RSVP deadline (SPEC F13, v0.9)', () => {
     if (!invitation) throw new Error('no invitation email');
     const firstToken = rsvpTokenFromEmail(invitation);
 
-    // Sent again to someone who got it ("RSVP sent"): the reminder, with a new link; the old one stops working.
+    // Sent again to someone who got it ("RSVP sent"): the reminder, with a new link; v0.11.42: the invitation's link keeps working.
     await send([fresh.id]);
     sent = await drain();
     const [reminder] = sentTo(sent, fresh.email);
     if (!reminder) throw new Error('no reminder email');
-    expect(reminder.subject).toBe('Update to Your Application');
-    expect(reminder.from).toBe('Urgent <p@localhost>'); // v0.11.38: only the reminder's sender name changes
+    expect(reminder.subject).toMatch(/^Reminder: reply by .+ for Deadline open$/);
+    expect(reminder.from).toBe('Station <p@localhost>'); // v0.11.43: the usual sender again (v0.11.37 to v0.11.42: Jobs, then Urgent)
     expect(reminder.text).toContain('A reminder: you\'re invited');
     expect(reminder.text).toContain('11:59 PM');
-    expect((await call({ token: rsvpTokenFromEmail(reminder) })).status).toBe(200);
-    expect((await call({ token: firstToken })).status).toBe(404);
+    const viaReminder = await call({ token: rsvpTokenFromEmail(reminder) });
+    expect(viaReminder.status).toBe(200);
+    expect(await call({ token: firstToken })).toEqual(viaReminder); // the same invitation, the same close
 
     // Someone who said No and is invited again gets the invitation, not "we haven't heard back".
     expect(await respond(rsvpTokenFromEmail(reminder), false)).toBe('NOT_GOING');
     await send([fresh.id]);
     sent = await drain();
     expect(sentTo(sent, fresh.email).map((m) => m.subject)).toEqual(['You\'re invited: Deadline open']);
+  });
+
+  it('T-RSVP-14: every RSVP link sent to someone keeps working until their RSVP is revoked or their email changes (v0.11.42)', async () => {
+    const ev = events.open;
+    const p = await invitee(ev, { sentAgo: '1 day' });
+    const mail = mockProvider();
+    const resend = async () => {
+      await f.pool.query('select queue_rsvps($1, $2, $3)', [ev, [p.id], f.staff.org1]);
+      await drainUntilIdle({ db: serviceClient(), provider: mail.provider, appOrigin: 'http://localhost:3100', from: 'Station <p@localhost>', passSecret: requireEnv('PASS_TOKEN_SECRET') });
+      const last = sentTo(mail.sent, p.email).at(-1);
+      if (!last) throw new Error('no RSVP email');
+      return rsvpTokenFromEmail(last);
+    };
+    const [second, third] = [await resend(), await resend()];
+    for (const token of [p.token, second, third]) expect((await call({ token })).status).toBe(200);
+    // Only sha256 hashes are kept (I-3), one row per link.
+    const { rows } = await f.pool.query<{ token_hash: string }>('select token_hash from rsvp_tokens where participant_id = $1 order by created_at', [p.id]);
+    expect(rows.map((r) => r.token_hash).sort()).toEqual([p.token, second, third].map(sha256hex).sort());
+
+    // The original link answers too, and the answer is theirs.
+    expect(await respond(p.token, false)).toBe('NOT_GOING');
+    expect((await row(p.id))?.status).toBe('withdrawn');
+
+    // Revoke RSVP forgets every link; a new RSVP after it doesn't bring the old ones back.
+    await f.pool.query('select revoke_rsvp($1, $2, $3)', [ev, p.id, f.staff.org1]);
+    for (const token of [p.token, second, third]) expect((await call({ token })).status).toBe(404);
+    expect((await f.pool.query('select 1 from rsvp_tokens where participant_id = $1', [p.id])).rowCount).toBe(0);
+    const fresh = await resend();
+    expect((await call({ token: fresh })).status).toBe(200);
+    for (const token of [p.token, second, third]) expect((await call({ token })).status).toBe(404);
+
+    // An email change in the Sheet clears the link (F3): every link sent to the old address dies with it.
+    await f.pool.query('update participants set rsvp_token_hash = null where id = $1', [p.id]);
+    expect((await call({ token: fresh })).status).toBe(404);
+    await f.pool.query(`update email_outbox set status = 'cancelled' where participant_id = $1 and status = 'pending'`, [p.id]);
   });
 
   it('T-RSVP-10: Nov 1, 2026 (the day DST ends in Toronto): no reminder at 10:00 EDT, 10:00 EST or later (v0.11.35)', async () => {

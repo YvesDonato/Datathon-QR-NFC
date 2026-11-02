@@ -18,8 +18,6 @@ export interface RenderedEmail {
   html: string;
   text: string;
   inlineImages: InlineImage[];
-  /** v0.11.37: a sender name in place of EMAIL_FROM's; the address stays. */
-  fromName?: string;
 }
 
 // SPEC §12. Body order (v0.11.28, owner's request): greeting, event, local time, venue, the event's links as small

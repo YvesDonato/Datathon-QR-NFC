@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatEventDateTime } from '@/lib/domain/event-time';
 import { adminUrl, errorText, useApi } from './api';
 import { ArrivalsChart, type ArrivalBucket } from './arrivals-chart';
+import { KIND_LABEL } from '@/app/(staff)/scan/[slug]/types';
 
 type Kind = 'door' | 'meal' | 'session' | 'custom';
 interface DashboardData {
@@ -153,7 +154,7 @@ export function Dashboard({ slug }: { slug: string }) {
             {data.checkpoints.map((c) => (
               <TableRow key={c.id}>
                 <TableCell>{c.name}</TableCell>
-                <TableCell>{c.kind}</TableCell>
+                <TableCell>{KIND_LABEL[c.kind].toLowerCase()}</TableCell>
                 <TableCell>
                   <Badge className={`tw-admin-badge inline-flex items-center justify-center w-[fit-content] p-[5px_9px] [border-width:1px] [border-style:solid] [border-top-color:var(--line)] [border-right-color:var(--line)] [border-bottom-color:var(--line)] [border-left-color:var(--line)] rounded-md [background:var(--raised)] text-fg text-[11px] font-semibold leading-[1.35] whitespace-nowrap max-w-full [font-family:inherit] ${c.isOpen ? `tw-admin-badgeOk
                 [&.tw-admin-badgeOk]:[border-color:color-mix(in_srgb,_var(--ok,_#4ade80)_40%,_var(--line))]

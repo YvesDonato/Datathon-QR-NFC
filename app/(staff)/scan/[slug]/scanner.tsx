@@ -113,17 +113,23 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
   // When scanning actually became possible (camera ready AND a checkpoint chosen); T-SCUI-01 timing.
   const activeAt = cameraReadyAt !== null && checkpointSetAt !== null ? Math.max(cameraReadyAt, checkpointSetAt) : null;
 
-  // Checkpoints for this event; restore this device's last choice (§10.1).
+  const fetchCheckpoints = useCallback(async (): Promise<Checkpoint[] | null> => {
+    const res = await fetch(`/api/events/${encodeURIComponent(slug)}/checkpoints`, { cache: 'no-store' });
+    if (res.status === 401) {
+      toLogin();
+      return null;
+    }
+    return res.ok ? ((await res.json()) as { checkpoints: Checkpoint[] }).checkpoints : [];
+  }, [slug, toLogin]);
+
+  // Checkpoints for this event; restore this device's last choice while it is open (§10.1, v0.11.41).
   useEffect(() => {
     let stale = false;
-    void fetch(`/api/events/${encodeURIComponent(slug)}/checkpoints`, { cache: 'no-store' }).then(async (res) => {
-      if (stale) return;
-      if (res.status === 401) return toLogin();
-      const list = res.ok ? ((await res.json()) as { checkpoints: Checkpoint[] }).checkpoints : [];
-      if (stale) return;
+    void fetchCheckpoints().then((list) => {
+      if (stale || !list) return;
       setCheckpoints(list);
       const saved = readPref(checkpointKey(slug));
-      if (saved && list.some((c) => c.id === saved)) {
+      if (saved && list.some((c) => c.id === saved && c.isOpen)) {
         setCheckpointId(saved);
         setCheckpointSetAt(performance.now());
       } else setPickerOpen(true);
@@ -131,7 +137,14 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     return () => {
       stale = true;
     };
-  }, [slug, toLogin]);
+  }, [slug, fetchCheckpoints]);
+
+  // v0.11.41: the picker lists open checkpoints only, so reload them each time it opens (an organizer may have
+  // just opened Dinner). Offline or failing, it keeps the list it has.
+  function openPicker() {
+    setPickerOpen(true);
+    fetchCheckpoints().then((list) => list && setCheckpoints(list), () => undefined);
+  }
 
   // Keep the session cookie fresh during a long shift (access tokens expire hourly).
   useEffect(() => {
@@ -379,7 +392,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
   function dismiss() {
     const action = result?.view.action;
     setResult(null);
-    if (action === 'pick-checkpoint') setPickerOpen(true);
+    if (action === 'pick-checkpoint') openPicker();
     if (action === 'manual-search') openSearch(false);
   }
 
@@ -437,7 +450,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
           </SectionLabel>
           <span className="block text-lg sm:text-xl leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{checkpoint?.name ?? 'No checkpoint selected'}</span>
         </div>
-        <Button type="button" variant="ghost" className="border-white/50 bg-white/12 text-white hover:bg-white/15 hover:text-white" onClick={() => setPickerOpen(true)} disabled={!checkpoints}>
+        <Button type="button" variant="ghost" className="border-white/50 bg-white/12 text-white hover:bg-white/15 hover:text-white" onClick={openPicker} disabled={!checkpoints}>
           Change
         </Button>
       </header>

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatEventDateTime, toLocalInput, zonedToUtc } from '@/lib/domain/event-time';
 import { adminUrl, errorText, useApi, useLoad } from '../api';
 import { ConfirmDialog, Modal, VoidDialog } from '../dialog';
+import { KIND_LABEL } from '@/app/(staff)/scan/[slug]/types';
 
 type Kind = 'door' | 'meal' | 'session' | 'custom';
 interface Checkpoint {
@@ -141,7 +142,7 @@ export function Checkpoints({ slug }: { slug: string }) {
               {rows.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell>{c.name}</TableCell>
-                  <TableCell>{c.kind}</TableCell>
+                  <TableCell>{KIND_LABEL[c.kind].toLowerCase()}</TableCell>
                   <TableCell>
                     <span data-testid="cp-state" className={`tw-admin-checkpointState inline-flex items-center justify-center gap-[7px] min-w-[82px] p-[6px_10px] [border-width:1px] [border-style:solid] [border-color:currentcolor] rounded-sm text-[12px] font-bold leading-[1.2] whitespace-nowrap ${c.isOpen ? `[&.tw-admin-checkpointState]:text-fg [&.tw-admin-checkpointState]:[background:var(--card)]
                 [&.tw-admin-checkpointState]:border-accent` : `[&.tw-admin-checkpointState]:text-muted-foreground [&.tw-admin-checkpointState]:[background:transparent]
@@ -268,7 +269,7 @@ function CheckpointForm(props: { slug: string; timezone: string; initial: Checkp
           <NativeSelect className="tw-admin-input w-full" value={kind} disabled={init !== null} onChange={(e) => setKind(e.target.value as Kind)}>
             {KINDS.map((k) => (
               <option key={k} value={k}>
-                {k}
+                {KIND_LABEL[k].toLowerCase()}
               </option>
             ))}
           </NativeSelect>

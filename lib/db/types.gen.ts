@@ -161,7 +161,7 @@ isOneToOne: false
                     "request_key"?: string,"seen_at"?: string
                   }
                   Relationships: [
-
+                    
                   ]
                 },"participant_tracks": {
                   Row: {
@@ -266,6 +266,26 @@ isOneToOne: false
       columns: ["event_id"]
 isOneToOne: false
       referencedRelation: "events"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"rsvp_tokens": {
+                  Row: {
+                    "created_at": string,"participant_id": string,"token_hash": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"participant_id": string,"token_hash": string
+                  }
+                  Update: {
+                    "created_at"?: string,"participant_id"?: string,"token_hash"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "rsvp_tokens_participant_id_fkey"
+      columns: ["participant_id"]
+isOneToOne: false
+      referencedRelation: "participants"
       referencedColumns: ["id"]
     }
                   ]
@@ -476,6 +496,9 @@ isOneToOne: false
                            },
 "_rsvp_closes":
 { Args: { "p_deadline": string,"p_sent_at": string }; Returns: string
+                           },
+"_rsvp_current_hash":
+{ Args: { "p_token_hash": string }; Returns: string
                            },
 "_rsvp_undelivered":
 { Args: { "p_participant_id": string }; Returns: boolean
