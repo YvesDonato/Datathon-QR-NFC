@@ -83,7 +83,10 @@ async function finish(db: Db, args: FinishArgs): Promise<void> {
 }
 
 // What the drainer sends for one row; null cancels it.
-type Outgoing = Pick<EmailMessage, 'to' | 'subject' | 'html' | 'text' | 'inlineImages' | 'fileLabel'>;
+type Outgoing = Pick<EmailMessage, 'to' | 'subject' | 'html' | 'text' | 'inlineImages' | 'fileLabel'> & { fromName?: string };
+
+// v0.11.37: another sender name on EMAIL_FROM's address, which is "Name <address>" or a bare address.
+const senderNamed = (from: string, name: string) => `${name} <${from.match(/<([^>]+)>/)?.[1] ?? from.trim()}>`;
 
 async function processRow(opts: DrainOptions, row: OutboxRow): Promise<'sent' | 'retrying' | 'failed' | 'cancelled' | 'rateLimited'> {
   let providerId: string;
@@ -94,7 +97,9 @@ async function processRow(opts: DrainOptions, row: OutboxRow): Promise<'sent' | 
       return 'cancelled';
     }
     // 3. Send.
-    ({ id: providerId } = await opts.provider.send({ ...message, from: opts.from, idempotencyKey: `${row.id}:${row.attempts}` }));
+    const { fromName, ...outgoing } = message;
+    const from = fromName ? senderNamed(opts.from, fromName) : opts.from;
+    ({ id: providerId } = await opts.provider.send({ ...outgoing, from, idempotencyKey: `${row.id}:${row.attempts}` }));
   } catch (err) {
     // 5. Failure: back off, or give up after the last attempt. last_error is sanitized (I-11).
     // A 429 isn't charged as an attempt and has its own, larger allowance (v0.11.25).

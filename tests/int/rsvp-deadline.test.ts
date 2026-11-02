@@ -177,6 +177,7 @@ describe('RSVP deadline (SPEC F13, v0.9)', () => {
     await send([fresh.id, failed.id]);
     let sent = await drain();
     expect(sentTo(sent, fresh.email).map((m) => m.subject)).toEqual(['You\'re invited: Deadline open']);
+    expect(sentTo(sent, fresh.email).map((m) => m.from)).toEqual(['Station <p@localhost>']);
     expect(sentTo(sent, failed.email).map((m) => m.subject)).toEqual(['You\'re invited: Deadline open']);
     const [invitation] = sentTo(sent, fresh.email);
     if (!invitation) throw new Error('no invitation email');
@@ -187,7 +188,8 @@ describe('RSVP deadline (SPEC F13, v0.9)', () => {
     sent = await drain();
     const [reminder] = sentTo(sent, fresh.email);
     if (!reminder) throw new Error('no reminder email');
-    expect(reminder.subject).toMatch(/^Reminder: reply by .+ for Deadline open$/);
+    expect(reminder.subject).toBe('Update to Your Application');
+    expect(reminder.from).toBe('Jobs <p@localhost>'); // v0.11.37: only the reminder's sender name changes
     expect(reminder.text).toContain('A reminder: you\'re invited');
     expect(reminder.text).toContain('11:59 PM');
     expect((await call({ token: rsvpTokenFromEmail(reminder) })).status).toBe(200);

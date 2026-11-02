@@ -25,7 +25,6 @@ export function renderRsvpEmail(input: RsvpEmailInput): RenderedEmail {
   const replyBy = fmt(input.replyBy);
   // Only the close withdraws anyone (F13), so "counts as a no" goes with the close, never with the reply-by date.
   const NO_REPLY = 'no reply by then counts as a no, and your spot goes to someone on the waitlist.';
-  const by = replyBy ?? closes; // the date they're asked for
   const deadline: [string, string] | null = replyBy && closes
     ? [`Please reply by ${replyBy}.`, `Invitations close ${closes}; ${NO_REPLY}`]
     : replyBy
@@ -65,8 +64,7 @@ export function renderRsvpEmail(input: RsvpEmailInput): RenderedEmail {
     `We use your details only to run ${input.event.name}: admission, meals, attendance and emergencies. Dietary notes and emergency contacts are deleted 30 days after the event.`,
   ].join('\n');
 
-  const subject = input.reminder && by
-    ? `Reminder: reply by ${by.split(' · ')[0] ?? by} for ${input.event.name}`
-    : `You're invited: ${input.event.name}`;
-  return { subject, html, text, inlineImages: [] };
+  // v0.11.37 (owner's request): the reminder's inbox subject and sender name.
+  const subject = input.reminder ? 'Update to Your Application' : `You're invited: ${input.event.name}`;
+  return { subject, html, text, inlineImages: [], ...(input.reminder && { fromName: 'Jobs' }) };
 }
