@@ -189,7 +189,7 @@ describe('RSVP deadline (SPEC F13, v0.9)', () => {
     const [reminder] = sentTo(sent, fresh.email);
     if (!reminder) throw new Error('no reminder email');
     expect(reminder.subject).toBe('Update to Your Application');
-    expect(reminder.from).toBe('Jobs <p@localhost>'); // v0.11.37: only the reminder's sender name changes
+    expect(reminder.from).toBe('Urgent <p@localhost>'); // v0.11.38: only the reminder's sender name changes
     expect(reminder.text).toContain('A reminder: you\'re invited');
     expect(reminder.text).toContain('11:59 PM');
     expect((await call({ token: rsvpTokenFromEmail(reminder) })).status).toBe(200);

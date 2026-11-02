@@ -64,7 +64,7 @@ export function renderRsvpEmail(input: RsvpEmailInput): RenderedEmail {
     `We use your details only to run ${input.event.name}: admission, meals, attendance and emergencies. Dietary notes and emergency contacts are deleted 30 days after the event.`,
   ].join('\n');
 
-  // v0.11.37 (owner's request): the reminder's inbox subject and sender name.
+  // v0.11.37 (owner's request): the reminder's inbox subject and sender name (v0.11.38: Urgent, was Jobs).
   const subject = input.reminder ? 'Update to Your Application' : `You're invited: ${input.event.name}`;
-  return { subject, html, text, inlineImages: [], ...(input.reminder && { fromName: 'Jobs' }) };
+  return { subject, html, text, inlineImages: [], ...(input.reminder && { fromName: 'Urgent' }) };
 }

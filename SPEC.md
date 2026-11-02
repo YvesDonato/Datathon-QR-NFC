@@ -1,6 +1,6 @@
 # Sheridan Datathon Station — Product & Technical Specification
 
-> **Status:** Draft v0.11.37 · **Owner:** Ade · **Last updated:** 2026-11-02
+> **Status:** Draft v0.11.38 · **Owner:** Ade · **Last updated:** 2026-11-02
 > The app is **Station** (Sheridan Datathon Station, `https://station.sheridandatathon.com`); it was called Passline until v0.11.21.
 
 ## 0. How to read this document
@@ -1071,7 +1071,7 @@ After a volunteer's own scan, "Undo last" is visible for 120 s. It asks for a re
 - **Venue map (v0.11.28, owner's request):** emails, the pass page and (v0.11.30, owner's request) the hacker menu and RSVP page call "HMC Campus" by its formal name, **Sheridan College - Hazel McCallion Campus** (`formalVenue()`; the admin pages and schedule places keep "HMC Campus"). The venue links to Google Maps for 4180 Duke of York Blvd, Mississauga, ON L5B 0H7 in the pass and RSVP emails (the plain-text part gives the address and link), on the pass page and on the hacker menu and schedule (`venueMapUrl()` in `lib/email/links.ts`).
 - **Escape** all interpolated values. Keep the HTML well under Gmail's ~102 KB clipping threshold.
 - **Disable open and click tracking.** Tracking rewrites links, which leaks fragments into redirect logs, and adds pixels.
-- **RSVP email (F13):** subject `You're invited: {Event name}` (v0.11.23; it ended “— will you be there?” before; every email uses the datathon's full name, “Sheridan Datathon 2026”); greeting, event, local date and time, venue, (v0.9) "Please reply by {closes}. No reply by then counts as a no, and your spot goes to someone on the waitlist." when there is a deadline, one "Reply to the invitation" button to `/rsvp#token`, privacy line (v0.6: mentions emergencies and the 30-day deletion). A **reminder** (v0.9) is the same email opening "A reminder…", subject `Update to Your Application`, sent as `Jobs` from `EMAIL_FROM`'s address (v0.11.37, owner's request; it was `Reminder: reply by {date} for {Event name}` from the usual sender); since v0.11.35 it goes only when an organizer sends the RSVP again to someone who already got one (F13). Same escaping and tracking rules.
+- **RSVP email (F13):** subject `You're invited: {Event name}` (v0.11.23; it ended “— will you be there?” before; every email uses the datathon's full name, “Sheridan Datathon 2026”); greeting, event, local date and time, venue, (v0.9) "Please reply by {closes}. No reply by then counts as a no, and your spot goes to someone on the waitlist." when there is a deadline, one "Reply to the invitation" button to `/rsvp#token`, privacy line (v0.6: mentions emergencies and the 30-day deletion). A **reminder** (v0.9) is the same email opening "A reminder…", subject `Update to Your Application`, sent as `Urgent` from `EMAIL_FROM`'s address (v0.11.37, owner's request; v0.11.38: `Urgent`, was `Jobs`; it was `Reminder: reply by {date} for {Event name}` from the usual sender); since v0.11.35 it goes only when an organizer sends the RSVP again to someone who already got one (F13). Same escaping and tracking rules.
 - **Profile reminder email (F14, v0.9):** subject `Finish setting up your profile for {Event name}`; greeting, what setup asks, one "Set up your profile" button to `${APP_ORIGIN}/me/profile`, plain-text part. No token. Cancelled if the person is no longer accepted or has finished.
 - **Team invite email (F15, S11b):** subject `{Inviter first name} invited you to join {Team} at {Event}` (v0.11.25: `{n} teams invited you to join them at {Event}` when n > 1 invites are waiting; at most one an hour); greeting, one sentence, one "Open your Team page" button to `${APP_ORIGIN}/me/team`, plain-text part. No join code or token. Same escaping and tracking rules. Cancel if the invitee is deleted, not accepted or has no pending invite.
 - **Staff added email (F9 step 1, v0.11.12):** to an existing account an organizer added as staff. Subject `You’re now {a volunteer | an organizer} for {Event name}`; the website's look (v0.11.21) with the **Staff access** hero title, greeting with their display name if set, the event's local date and time, what they can open, one centred "Sign in" button to `${APP_ORIGIN}/login?next=/scan/<slug>` (volunteer) or `/login?next=/admin/<slug>` (organizer), a line pointing to "Forgot or never set your password?", plain-text part. No token. Same escaping and tracking rules. Cancelled if they are no longer staff on the event.
@@ -1648,6 +1648,8 @@ Each slice ends with its tests green in CI and a short demo.
 ---
 
 ## 20. Changelog
+
+- **v0.11.38 (2026-11-02)** — The RSVP reminder's sender name is "Urgent" instead of "Jobs" (owner's request); same address, subject and body. §12; T-RSVP-10/11 updated.
 
 - **v0.11.37 (2026-11-02)** — The RSVP reminder email's subject is "Update to Your Application" and its sender name is "Jobs" (owner's requests), instead of "Reminder: reply by {date} for {Event name}" from "Sheridan Datathon"; the address and body are unchanged, and every other email keeps the usual sender. §12; T-RSVP-10/11/13 updated.
 

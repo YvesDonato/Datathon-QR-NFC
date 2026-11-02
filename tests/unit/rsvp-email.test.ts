@@ -64,9 +64,9 @@ describe('RSVP email (SPEC §12, F13 v0.9)', () => {
     expect(emailEventName('hack-day', 'Hack Day')).toBe('Hack Day');
   });
 
-  it('T-RSVP-11: the reminder is "Update to Your Application" from Jobs (v0.11.37); no deadline, no deadline line; names are escaped', () => {
+  it('T-RSVP-11: the reminder is "Update to Your Application" from Urgent (v0.11.37, v0.11.38); no deadline, no deadline line; names are escaped', () => {
     expect(renderRsvpEmail({ ...base, reminder: true }).subject).toBe('Update to Your Application');
-    expect(renderRsvpEmail({ ...base, reminder: true }).fromName).toBe('Jobs');
+    expect(renderRsvpEmail({ ...base, reminder: true }).fromName).toBe('Urgent');
     expect(renderRsvpEmail(base).fromName).toBeUndefined();
     const open = renderRsvpEmail({ ...base, closesAt: null });
     expect(open.text).not.toContain('Reply by');
