@@ -72,6 +72,8 @@ export function Participants({ slug, badgeOrigin }: { slug: string; badgeOrigin:
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const invitable = (rows ?? []).filter((r) => r.status !== 'accepted');
   const picked = invitable.filter((r) => selected.has(r.id));
+  // v0.11.35: no automatic reminders; sending again to someone who shows "RSVP sent" emails the reminder.
+  const remindable = picked.filter((r) => r.status === 'pending' && r.rsvpSentAt && !r.rsvpFailed).length;
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
@@ -229,6 +231,11 @@ export function Participants({ slug, badgeOrigin }: { slug: string; badgeOrigin:
         <Button type="button" disabled={picked.length === 0} onClick={() => void sendRsvps()}>
           Send RSVP ({picked.length})
         </Button>
+        {remindable > 0 && (
+          <span className="tw-admin-muted text-muted-foreground text-[12px] leading-[1.7]">
+            {remindable} already got one: they get the reminder email.
+          </span>
+        )}
       </div>
       {message && (
         <Alert className={`flex items-start gap-[12px] m-[0px_0px_14px] p-[15px_17px] [border-width:1px] [border-style:solid]

@@ -431,7 +431,7 @@
   .setup-progress-fill { transition: none !important; }
 }
 
-/* v0.11.29: Team page Tracks chart. Bars grow from the baseline on load; nothing moves under reduced motion. */
+/* v0.11.29: Team page Tracks chart (and, v0.11.36, the admin dietary chart). Bars grow from the baseline on load; nothing moves under reduced motion. */
 .track-bar { transform-origin: left; transition: transform 0.5s var(--ease); }
 @starting-style { .track-bar { transform: scaleX(0); } }
 @keyframes tracks-tip { from { opacity: 0; translate: 0 4px; } }

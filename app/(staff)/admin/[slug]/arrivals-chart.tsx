@@ -15,7 +15,7 @@ const H = 196;
 const PAD = { top: 12, right: 8, bottom: 28, left: 36 };
 
 // Whole-number ticks (these are head counts): a 1/2/5 × 10^k step giving at most ~4 intervals.
-function niceScale(peak: number): { max: number; ticks: number[] } {
+export function niceScale(peak: number): { max: number; ticks: number[] } {
   const rough = Math.max(1, peak / 4);
   const pow = 10 ** Math.floor(Math.log10(rough));
   const step = [1, 2, 5, 10].map((m) => m * pow).find((s) => s >= rough) ?? 10 * pow;

@@ -5,7 +5,7 @@ import { requireStaffBySlug } from '@/lib/auth/staff';
 import { staffNames as sharedStaffNames } from '@/lib/db/staff-names';
 import type { Database, Json } from '@/lib/db/types.gen';
 import { parseCsv, toCsv } from '@/lib/domain/csv';
-import { bucketLabel, doorClosedWarning } from '@/lib/domain/dashboard';
+import { bucketLabel, dietaryBreakdown, doorClosedWarning } from '@/lib/domain/dashboard';
 import { formatEventDateTime } from '@/lib/domain/event-time';
 import { normalizeEmail, toSearchText } from '@/lib/domain/normalize';
 import { parseSheetId } from '@/lib/domain/sheet';
@@ -193,7 +193,13 @@ export function createAdminApi(deps: AdminDeps) {
     async dashboard(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
-      const [m, event] = await Promise.all([metrics(g.eventId), loadEvent(g.eventId)]);
+      // shortcut: PostgREST caps a read at 1000 rows; one event's accepted hackers are a few hundred.
+      const [m, event, diet] = await Promise.all([
+        metrics(g.eventId),
+        loadEvent(g.eventId),
+        db.from('participants').select('dietary_notes').eq('event_id', g.eventId).eq('status', 'accepted').is('deleted_at', null).eq('is_test', false),
+      ]);
+      if (diet.error) throw new Error(`dietary notes load failed (${diet.error.code})`);
       const checkpoints = m.checkpoints.map((c) => ({
         ...c,
         fill: c.capacity ? round4(c.liveScans / c.capacity) : null,
@@ -217,6 +223,7 @@ export function createAdminApi(deps: AdminDeps) {
           return { bucketUtc, label: bucketLabel(bucketUtc, event.timezone), arrivals: a.arrivals };
         }),
         outbox: m.outbox,
+        dietary: dietaryBreakdown(diet.data.map((p) => p.dietary_notes)),
         alerts: {
           doorClosed: doorClosedWarning({ now: now(), startsAt: event.starts_at, endsAt: event.ends_at, doorOpen: door?.isOpen ?? false }),
           notFound: m.notFound,

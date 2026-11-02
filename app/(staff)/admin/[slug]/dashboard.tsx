@@ -8,6 +8,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatEventDateTime } from '@/lib/domain/event-time';
 import { adminUrl, errorText, useApi } from './api';
 import { ArrivalsChart, type ArrivalBucket } from './arrivals-chart';
+import { DietaryChart } from './dietary-chart';
+import type { DietaryBreakdown } from '@/lib/domain/dashboard';
 
 type Kind = 'door' | 'meal' | 'session' | 'custom';
 interface DashboardData {
@@ -21,6 +23,7 @@ interface DashboardData {
   sessionRanking: Array<{ id: string; name: string; liveScans: number; capacity: number | null }>;
   arrivals: ArrivalBucket[];
   outbox: { pending: number; failed: number };
+  dietary: DietaryBreakdown;
   alerts: { doorClosed: boolean; notFound: Array<{ staffUserId: string; displayName: string | null; count: number }> };
 }
 
@@ -174,6 +177,8 @@ export function Dashboard({ slug }: { slug: string }) {
 
       <h2>Door arrivals per 15 minutes</h2>
       <ArrivalsChart buckets={data.arrivals} timezone={data.event.timezone} />
+
+      <DietaryChart dietary={data.dietary} />
 
       {data.sessionRanking.length > 0 && (
         <>

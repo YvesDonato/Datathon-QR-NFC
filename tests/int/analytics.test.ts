@@ -36,6 +36,9 @@ beforeAll(async () => {
   await c.call('deleteParticipant', org, { slug: f.slug, id: z.id }, { method: 'DELETE' }); // deleted: excluded
 
   await f.pool.query(`insert into email_outbox (participant_id, kind) values ($1, 'pass_reissued')`, [f.p.N]);
+  // T-ANA-07: A is Vegetarian (fixture); only accepted, real, undeleted hackers count.
+  const diet = [[f.p.B, 'Halal'], [f.p.T, 'Vegan'], [f.p.C, 'Kosher'], [f.p.Wd, 'Vegan']] as const;
+  for (const [id, note] of diet) await f.pool.query(`update participants set dietary_notes = $2 where id = $1`, [id, note]);
 });
 afterAll(async () => {
   await f.close();
@@ -74,6 +77,19 @@ describe('dashboard analytics (SPEC §13)', () => {
     expect(byName.Raffle).toBe(2); // Rv's voided scan not counted
     expect(byName.Lunch).toBe(2); // T (is_test) not counted
     expect(byName.Door).toBe(3); // T (is_test) and Z (deleted) not counted
+  });
+
+  it('T-ANA-07: dietary restrictions of accepted hackers, grouped, excluding test, waitlisted, withdrawn and deleted people', async () => {
+    const body = obj((await c.call('dashboard', org, { slug: f.slug })).body);
+    expect(body.dietary).toEqual({
+      total: 4, // A, B, Rv, N
+      none: 2, // Rv, N
+      other: 0,
+      groups: [
+        { label: 'Halal', count: 1 },
+        { label: 'Vegetarian', count: 1 },
+      ],
+    });
   });
 
   it('T-ANA-06: session ranking ties are sorted by name ascending', async () => {

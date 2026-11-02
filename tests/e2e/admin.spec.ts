@@ -158,6 +158,24 @@ test('T-ADM-06: arrival bars keep UTC order across local days and expose hover/f
   await expect(page.getByRole('row', { name: /Sun 7:30 PM EST–7:45 PM EST 2/ })).toBeVisible();
 });
 
+test('T-ANA-07: the dashboard charts accepted hackers’ dietary restrictions with counts and shares', async ({ page }) => {
+  // A is Vegetarian (fixture); T is a test participant, so their note doesn't count.
+  for (const [who, note] of [['B', 'Halal, no pork'], ['N', 'veggie'], ['T', 'Vegan']] as const) {
+    await f.pool.query('update participants set dietary_notes = $2 where id = $1', [f.p[who], note]);
+  }
+  await page.goto(`/admin/${f.slug}`);
+  const chart = page.getByTestId('dietary-chart');
+  await expect(chart.getByRole('group')).toHaveText([/^Vegetarian\s*2\s*· 50%$/, /^Halal\s*1\s*· 25%$/, /^No pork\s*1\s*· 25%$/, /^No restrictions\s*1\s*· 25%$/]);
+  await expect(chart).toContainText('Out of 4 accepted hackers');
+  await expect(chart.getByRole('group', { name: 'Halal: 1 hacker, 25%' })).toBeVisible();
+  for (const [width, height] of [[1440, 900], [390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await chart.scrollIntoViewIfNeeded();
+    if (process.env.HOVER_SCREENSHOTS) await chart.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/dietary-${width}.png` });
+  }
+});
+
 test('Admin smoke: walk-in with check-in shows as checked in; void a scan; exports are CSV', async ({ page }) => {
   await page.goto(`/admin/${f.slug}/participants`);
   await page.getByRole('button', { name: 'Add attendee' }).click();
@@ -211,6 +229,7 @@ test('T-ADM-09: Add attendee with "Not RSVPed yet" adds a pending applicant; Sen
   await expect(row).toContainText('pending');
   await expect(row).not.toContainText('RSVP sent');
   await page.getByLabel('Select Nora Notyet').check();
+  await expect(page.getByText(/already got one/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Send RSVP (1)' }).click();
   await expect(page.getByRole('status')).toHaveText('✓ RSVP emails queued for 1 person.');
   await expect(async () => {
@@ -218,6 +237,13 @@ test('T-ADM-09: Add attendee with "Not RSVPed yet" adds a pending applicant; Sen
     await expect(page.getByRole('row', { name: /Nora Notyet/ })).toContainText('RSVP sent', { timeout: 1000 });
   }).toPass({ timeout: 15_000 });
   expect(await consoleMailText(email, '/rsvp#')).toMatch(/\/rsvp#[A-Za-z0-9_-]{32}/);
+
+  // v0.11.35: no automatic reminders; sending again to someone with "RSVP sent" emails the reminder.
+  await page.getByLabel('Select Nora Notyet').check();
+  await expect(page.getByText('1 already got one: they get the reminder email.')).toBeVisible();
+  await page.getByRole('button', { name: 'Send RSVP (1)' }).click();
+  await expect(page.getByRole('status')).toHaveText('✓ RSVP emails queued for 1 person.');
+  expect(await consoleMailText(email, "A reminder: you're invited")).toMatch(/\/rsvp#[A-Za-z0-9_-]{32}/);
 
   // T-ADM-11 (v0.9.1): Revoke RSVP takes it back, e.g. after a test.
   const nora = page.getByRole('row', { name: /Nora Notyet/ });

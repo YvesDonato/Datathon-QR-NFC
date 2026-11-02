@@ -158,7 +158,16 @@ async function participantEmail(opts: DrainOptions, row: OutboxRow): Promise<Out
     // v0.11.28: they're asked to reply by the event's reply-by date while it's ahead; the email also names the
     // real close, the only time no reply counts as a no.
     const replyBy = p.events.rsvp_reply_by && new Date(p.events.rsvp_reply_by).toISOString();
-    email = renderRsvpEmail({ firstName: p.first_name, event, rsvpUrl: `${opts.appOrigin}/rsvp#${token}`, closesAt, replyBy: earlierReplyBy(replyBy, closesAt, opts.now?.() ?? new Date()), reminder: row.kind === 'rsvp_reminder' });
+    // v0.11.35: no automatic reminders; an organizer's re-send to someone still pending who already got one
+    // is the reminder ("RSVP sent" on the Participants page). Someone who said No gets the invitation again.
+    let reminder = row.kind === 'rsvp_reminder';
+    if (!reminder && p.status === 'pending') {
+      const { count, error: sentError } = await opts.db.from('email_outbox').select('id', { count: 'exact', head: true })
+        .eq('participant_id', participantId).in('kind', ['rsvp', 'rsvp_reminder']).eq('status', 'sent').neq('id', row.id);
+      if (sentError) throw new Error(`rsvp history load failed (${sentError.code})`);
+      reminder = (count ?? 0) > 0;
+    }
+    email = renderRsvpEmail({ firstName: p.first_name, event, rsvpUrl: `${opts.appOrigin}/rsvp#${token}`, closesAt, replyBy: earlierReplyBy(replyBy, closesAt, opts.now?.() ?? new Date()), reminder });
   } else if (row.kind === 'team_invite') {
     if (p.team_id !== null) return null; // joined a team since (v0.11.25): the invite no longer applies
     const { data: invites, error: inviteError } = await opts.db.from('team_invites')

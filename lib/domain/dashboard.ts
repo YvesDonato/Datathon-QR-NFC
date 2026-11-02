@@ -1,5 +1,7 @@
 // SPEC §11 / §13 dashboard rules. Pure: `now` is a parameter.
 
+import { toSearchText } from './normalize';
+
 const THIRTY_MIN_MS = 30 * 60 * 1000;
 
 // §11: warn if within 30 min of starts_at and the door is closed (and keep warning until it opens
@@ -30,4 +32,46 @@ export function arrivalLabels(buckets: string[], timeZone: string): { axis: stri
       detail: `${weekday.format(start)} ${bucketLabel(utc, timeZone)}–${endDay}${bucketLabel(end.toISOString(), timeZone)}`,
     };
   });
+}
+
+// §13 (v0.11.36): accepted hackers' free-text dietary notes (from the Sheet), grouped by keyword for catering.
+// A note can be in several groups; one in none is "other", unless it's blank or says there's nothing.
+const DIET_GROUPS: Array<[label: string, pattern: RegExp]> = [
+  ['Vegetarian', /(?<!\bnon )\b(vegetarian|veggie|veg)\b/],
+  ['Vegan', /\bvegan\b/],
+  ['Pescatarian', /\bpesc[ae]tarian\b/],
+  ['Halal', /\bhalal\b/],
+  ['Kosher', /\bkosher\b/],
+  ['Gluten-free', /\b(gluten|celiac|coeliac)\b/],
+  ['Dairy-free', /\b(dairy|lactose|milk)\b/],
+  ['Nuts', /\b(nuts?|peanuts?|almonds?|cashews?)\b/],
+  ['Seafood/shellfish', /\b(seafood|shellfish|fish|shrimp|crustaceans?)\b/],
+  ['No pork', /\bpork\b/],
+  ['No beef', /\bbeef\b/],
+  ['Eggs', /\beggs?\b/],
+];
+const NO_RESTRICTION = /^(no|none|nope|nil|nothing|na|n a|not applicable|non veg|non vegetarian)( (dietary )?(restrictions?|allergies))?$/;
+
+export interface DietaryBreakdown {
+  total: number;
+  none: number;
+  other: number;
+  groups: Array<{ label: string; count: number }>;
+}
+
+export function dietaryBreakdown(notes: Array<string | null>): DietaryBreakdown {
+  const counts = new Map<string, number>();
+  let none = 0;
+  let other = 0;
+  for (const note of notes) {
+    const text = toSearchText(note ?? '');
+    const hits = DIET_GROUPS.filter(([, pattern]) => pattern.test(text));
+    for (const [label] of hits) counts.set(label, (counts.get(label) ?? 0) + 1);
+    if (hits.length === 0) {
+      if (text === '' || NO_RESTRICTION.test(text)) none += 1;
+      else other += 1;
+    }
+  }
+  const groups = [...counts].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'en'));
+  return { total: notes.length, none, other, groups };
 }

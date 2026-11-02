@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucketLabel, doorClosedWarning } from '@/lib/domain/dashboard';
+import { bucketLabel, dietaryBreakdown, doorClosedWarning } from '@/lib/domain/dashboard';
 
 const startsAt = '2026-10-03T13:00:00Z';
 const endsAt = '2026-10-03T23:00:00Z';
@@ -31,4 +31,24 @@ it('T-ADM-06: arrival labels distinguish local dates and preserve DST offsets in
   const dst = arrivalLabels(['2026-11-01T05:45:00Z'], 'America/Toronto');
   expect(dst[0]?.detail).toContain('1:45 AM EDT');
   expect(dst[0]?.detail).toContain('1:00 AM EST');
+});
+
+it('T-ANA-07: dietary notes are grouped by keyword; a note can be in several groups; blank and "none" mean no restriction', () => {
+  const notes = ['Vegetarian', 'VEGAN', 'Halal, no pork', 'Gluten free / celiac', 'lactose intolerant', 'Peanuts!', 'Végétarian', 'veg',
+    'N/A', 'None.', '', null, 'Non-vegetarian', 'No dietary restrictions', 'low FODMAP'];
+  expect(dietaryBreakdown(notes)).toEqual({
+    total: 15,
+    none: 6, // N/A, None., '', null, Non-vegetarian, No dietary restrictions
+    other: 1, // low FODMAP
+    groups: [
+      { label: 'Vegetarian', count: 3 },
+      { label: 'Dairy-free', count: 1 },
+      { label: 'Gluten-free', count: 1 },
+      { label: 'Halal', count: 1 },
+      { label: 'No pork', count: 1 },
+      { label: 'Nuts', count: 1 },
+      { label: 'Vegan', count: 1 },
+    ],
+  });
+  expect(dietaryBreakdown([])).toEqual({ total: 0, none: 0, other: 0, groups: [] });
 });
