@@ -72,7 +72,7 @@ export function CateringView({ hackers }: { hackers: Hacker[] }) {
         <div className="grid gap-[14px]">
           {shownGroups.map(({ label, people, shown }) => (
             <GroupCard key={label} label={label} count={people.length} shown={shown.length}>
-              <ul className="m-0 list-none p-0 text-sm leading-7 [columns:13rem] [column-gap:24px]">
+              <ul className="m-0 list-none p-0 text-sm leading-7 [columns:13rem] [column-gap:24px] max-[600.001px]:[columns:8.5rem] max-[600.001px]:[column-gap:16px]">
                 {shown.map((h) => <li key={h.id} className="break-inside-avoid">{h.name}</li>)}
               </ul>
             </GroupCard>
