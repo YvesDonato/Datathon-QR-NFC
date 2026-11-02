@@ -9,7 +9,8 @@ import type { ResultView } from '@/lib/scanner/result-view';
 // The full-screen result takes keyboard focus when it appears and hands it back on dismiss (A12). The assertive
 // live region is a sibling of the dismiss button, never content inside it, so screen readers announce it reliably.
 // Only green (and the "Not a Datathon code" notice) auto-dismiss; every problem needs a tap so the volunteer notices it.
-export function ResultScreen({ view, shownAt, onDismiss }: { view: ResultView; shownAt: number; onDismiss: () => void }) {
+// v0.11.40: `onLinkBadge` (door ADMIT, Web NFC only) adds a Link badge button beside the dismiss area, never inside it.
+export function ResultScreen({ view, shownAt, onDismiss, onLinkBadge }: { view: ResultView; shownAt: number; onDismiss: () => void; onLinkBadge?: () => void }) {
   const tap = view.dismiss === 'tap';
   const container = useRef<HTMLDivElement>(null);
   const previous = useRef<Element | null>(null);
@@ -71,6 +72,19 @@ export function ResultScreen({ view, shownAt, onDismiss }: { view: ResultView; s
           {tap ? 'Tap to continue' : 'Tap to skip'}
         </span>
       </button>
+      {onLinkBadge && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onLinkBadge();
+          }}
+          className="mb-2 min-h-[52px] w-full max-w-[420px] cursor-pointer rounded-card border-2 border-solid border-white bg-transparent px-6 font-mono text-[18px] font-bold text-white
+            focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+        >
+          Link badge
+        </button>
+      )}
     </div>
   );
 }

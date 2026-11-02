@@ -31,6 +31,8 @@ export interface ResultView {
   emphasis?: string;
   /** v0.11.39: the catering groups of their dietary notes at a meal, e.g. Halal, No pork. */
   tags?: string[];
+  /** v0.11.40: who to link a badge to, offered on a door ADMIT made by QR or manual search (§10.2). */
+  linkable?: { id: string; name: string };
   name?: string;
   dismiss: { autoMs: number } | 'tap';
   action?: 'manual-search' | 'pick-checkpoint';
@@ -76,6 +78,7 @@ export function viewFor(outcome: Outcome, ctx: ViewContext): ResultView {
         ...who,
         ...(emphasis ? { emphasis } : {}),
         ...(tags.length > 0 && { tags }),
+        ...(ctx.checkpointKind === 'door' && ctx.method !== 'nfc' && r.participant && { linkable: { id: r.participant.id, name: r.participant.displayName } }),
         dismiss: { autoMs: GREEN_MS },
         sound: 'chime',
       };

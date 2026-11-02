@@ -97,7 +97,7 @@ test('T-SCUI-03: SERVE at a meal shows the dietary groups as tags above the note
   await recordAda(page);
   const result = page.getByTestId('scan-result');
   await expect(result).toContainText('SERVE');
-  if (process.env.HOVER_SCREENSHOTS) await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/serve-tags.png` });
+  if (process.env.HOVER_SCREENSHOTS) { await page.waitForTimeout(600); await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/serve-tags.png` }); } // after the fade-in
   await expect(result.getByTestId('diet-tags').getByRole('listitem')).toHaveText(['Halal', 'No pork']);
   await expect(result).toContainText('Halal, no pork');
 });

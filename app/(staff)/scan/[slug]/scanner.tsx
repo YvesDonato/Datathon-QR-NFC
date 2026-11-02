@@ -68,6 +68,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
   const [checkpointId, setCheckpointId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchLinkOnly, setSearchLinkOnly] = useState(false); // v0.11.40: the bottom bar's Link badge
   const searchButton = useRef<HTMLButtonElement>(null);
   const [linking, setLinking] = useState<Row | null>(null);
   const [linkState, setLinkState] = useState<LinkState>({ kind: 'waiting' });
@@ -323,6 +324,17 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     if (nfc.state !== 'on') void nfc.start(); // keep Chrome's user gesture; the saved input mode stays as it was
   }
 
+  // v0.11.40 (§10.2): Link badge on a door ADMIT; this tap is the gesture Chrome needs to start the reader.
+  function linkFromResult(who: { id: string; name: string }) {
+    setResult(null);
+    startLink({ id: who.id, displayName: who.name, status: 'accepted', email: '', scannedHere: true, hasBadge: false });
+  }
+
+  function openSearch(linkOnly: boolean) {
+    setSearchLinkOnly(linkOnly);
+    setSearchOpen(true);
+  }
+
   // Always allowed, even while saving: Chrome closes the dialog itself on a second Back/Escape anyway.
   function closeLink() {
     if (!linkRow.current) return; // already closed (Cancel, then the dialog's own close event)
@@ -368,7 +380,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     const action = result?.view.action;
     setResult(null);
     if (action === 'pick-checkpoint') setPickerOpen(true);
-    if (action === 'manual-search') setSearchOpen(true);
+    if (action === 'manual-search') openSearch(false);
   }
 
   function chooseCheckpoint(id: string) {
@@ -481,12 +493,17 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
       </div>
 
       <div className="flex gap-3 p-4 sm:p-6 flex-wrap bg-bg [&_button]:flex-1 [&_button]:min-h-[52px]">
-        <Button ref={searchButton} type="button" onClick={() => setSearchOpen(true)} disabled={offline || !checkpoint}>
+        <Button ref={searchButton} type="button" onClick={() => openSearch(false)} disabled={offline || !checkpoint}>
           Manual search
         </Button>
         <Button ref={peopleButton} type="button" variant="outline" onClick={() => setPeopleOpen(true)} disabled={offline || !checkpoint}>
           Scanned here
         </Button>
+        {nfc.supported && mode && (
+          <Button type="button" variant="outline" onClick={() => openSearch(true)} disabled={offline || !checkpoint}>
+            Link badge
+          </Button>
+        )}
         {showUndo && (
           <Button type="button" variant="outline" onClick={() => setUndoOpen(true)}>
             Undo last
@@ -525,6 +542,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
           disabled={offline || busy}
           onUnauthorized={toLogin}
           onLinkBadge={startLink}
+          linkOnly={searchLinkOnly}
           onClose={() => setSearchOpen(false)}
           onRecord={(participantId) => {
             setSearchOpen(false);
@@ -557,7 +575,14 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
         />
       )}
       {undoOpen && <UndoDialog onSubmit={(r) => void undo(r)} onCancel={() => setUndoOpen(false)} />}
-      {result && <ResultScreen view={result.view} shownAt={result.shownAt} onDismiss={dismiss} />}
+      {result && (
+        <ResultScreen
+          view={result.view}
+          shownAt={result.shownAt}
+          onDismiss={dismiss}
+          onLinkBadge={nfc.supported && result.view.linkable ? () => result.view.linkable && linkFromResult(result.view.linkable) : undefined}
+        />
+      )}
     </main>
   );
 }

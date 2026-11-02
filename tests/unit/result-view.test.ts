@@ -37,6 +37,20 @@ describe('result screen mapping (SPEC §10.2)', () => {
     });
   });
 
+  it('T-NFC-29: a door ADMIT by QR or manual search offers to link that person a badge (v0.11.40)', () => {
+    const want = { id: 'p1', name: 'Ada Lovelace' };
+    expect(viewFor(server({ code: 'ACCEPTED', participant }), ctx('door')).linkable).toEqual(want);
+    expect(viewFor(server({ code: 'ACCEPTED', participant }), { ...ctx('door'), method: 'manual' }).linkable).toEqual(want);
+    expect(viewFor(server({ code: 'ACCEPTED', replayed: true, participant }), { ...ctx('door'), method: 'qr' }).linkable).toEqual(want);
+    // Not by badge (they hold a linked one), not at other checkpoints, never on a problem.
+    expect(viewFor(server({ code: 'ACCEPTED', participant }), { ...ctx('door'), method: 'nfc' }).linkable).toBeUndefined();
+    expect(viewFor(server({ code: 'ACCEPTED', participant }), ctx('meal')).linkable).toBeUndefined();
+    expect(viewFor(server({ code: 'ACCEPTED' }), ctx('door')).linkable).toBeUndefined();
+    const previous = { scannedAt: now.toISOString(), scannedByName: 'Maya', scannedByMe: false };
+    expect(viewFor(server({ code: 'ALREADY_SCANNED', participant, previous }), ctx('door')).linkable).toBeUndefined();
+    expect(viewFor(server({ code: 'NOT_ACCEPTED', participant }), ctx('door')).linkable).toBeUndefined();
+  });
+
   it('T-SCUI-12: ALREADY_SCANNED by me < 60 s is amber; by me ≥ 60 s or by someone else is red with time and name', () => {
     const at = (secondsAgo: number) => new Date(now.getTime() - secondsAgo * 1000).toISOString();
     expect(viewFor(server({ code: 'ALREADY_SCANNED', participant, previous: { scannedAt: at(8), scannedByName: 'Me', scannedByMe: true } }), ctx())).toMatchObject({
