@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import { isAttendeePage } from './attendee-pages';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import styles from './rocket-flyby.module.css';
 
@@ -19,8 +20,7 @@ const subscribeMotion = (notify: () => void) => {
 
 export function RocketFlyby() {
   const pathname = usePathname();
-  const attendee = pathname === '/me' || pathname.startsWith('/me/');
-  const shown = attendee || ['/rsvp', '/login', '/set-password', '/auth/confirm'].includes(pathname);
+  const shown = isAttendeePage(pathname);
   const animate = useSyncExternalStore(subscribeMotion, motionAllowed, serverMotionAllowed);
   const rocket = useRef<HTMLDivElement>(null);
 

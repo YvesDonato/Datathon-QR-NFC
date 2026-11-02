@@ -660,6 +660,9 @@ isOneToOne: false
 "team_leave":
 { Args: { "p_email": string,"p_participant_id": string,"p_user_id": string }; Returns: string
                            },
+"team_remove":
+{ Args: { "p_code": string,"p_email": string,"p_member_id": string,"p_participant_id": string,"p_user_id": string }; Returns: string
+                           },
 "team_set_track":
 { Args: { "p_email": string,"p_participant_id": string,"p_track_id": string,"p_user_id": string }; Returns: string
                            },

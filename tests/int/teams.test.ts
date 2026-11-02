@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { generateJoinCode } from '@/lib/domain/team';
 import { generateToken } from '@/lib/domain/token';
-import { createTeam, joinTeam, leaveTeam, setTeamTrack } from '@/lib/me/team';
+import { createTeam, joinTeam, leaveTeam, removeTeammate, setTeamTrack } from '@/lib/me/team';
 import { serviceClient } from '../fixtures/mail';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
@@ -140,5 +141,65 @@ describe('hacker teams (SPEC F15, v0.7)', () => {
     await f.pool.query(`insert into teams (event_id, name, join_code) values ($1, 'Prepared empty', 'PRPRMPTY')`, [f.e1.id]);
     await f.pool.query(`update participants set status = 'withdrawn' where id = $1`, [f.p.Wd]);
     expect(await teamRow('Prepared empty')).toBeDefined();
+  });
+
+  it('T-TEAM-10 (v0.11.44): any member removes another while forming is open; the team gets a new code; races never deadlock', async () => {
+    await setOpen(f.e1.id, true);
+    const [a, b, c, d, e] = await Promise.all(Array.from({ length: 5 }, () => f.addParticipant(f.e1.id, { withPass: false })));
+    const [asA, asB] = [await as(a!.id), await as(b!.id)];
+    expect(await createTeam(db(), asA, a!.id, 'Kickers')).toBe('CREATED');
+    const before = await teamRow('Kickers');
+    for (const m of [b!, c!]) expect(await joinTeam(db(), await as(m.id), m.id, { code: before?.join_code ?? '' })).toBe('JOINED');
+    expect(await createTeam(db(), await as(d!.id), d!.id, 'Elsewhere Kickers')).toBe('CREATED');
+    await f.pool.query(`update participants set team_status = 'looking' where id = $1`, [b!.id]);
+
+    // Only another member of your own team, only your own row, only while forming is open.
+    expect(await removeTeammate(db(), asA, a!.id, a!.id)).toBe('NOT_FOUND'); // yourself: that's Leave team
+    expect(await removeTeammate(db(), asA, a!.id, d!.id)).toBe('NOT_FOUND'); // another team
+    expect(await removeTeammate(db(), asA, a!.id, f.p.X)).toBe('NOT_FOUND'); // another event
+    expect(await removeTeammate(db(), asA, a!.id, 'nope')).toBe('NOT_FOUND');
+    expect(await removeTeammate(db(), asB, a!.id, c!.id)).toBe('NOT_FOUND'); // A's row, B's email
+    await setOpen(f.e1.id, false);
+    expect(await removeTeammate(db(), asA, a!.id, b!.id)).toBe('CLOSED');
+    await setOpen(f.e1.id, true);
+    expect(await teamOf(b!.id)).toBe(before?.id);
+
+    expect(await removeTeammate(db(), asA, a!.id, b!.id)).toBe('REMOVED');
+    expect(await teamOf(b!.id)).toBeNull();
+    expect(await removeTeammate(db(), asA, a!.id, b!.id)).toBe('NOT_FOUND');
+    const after = await teamRow('Kickers');
+    expect(after?.join_code).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+    expect(after?.join_code).not.toBe(before?.join_code);
+    // The old code no longer works; the new one does. Their answer was looking, so they're back under Looking.
+    expect(await joinTeam(db(), asB, b!.id, { code: before?.join_code ?? '' })).toBe('BAD_CODE');
+    expect((await f.pool.query('select looking_for_team from participants where id = $1', [b!.id])).rows[0]?.looking_for_team).toBe(true);
+    expect(await joinTeam(db(), await as(e!.id), e!.id, { code: after?.join_code ?? '' })).toBe('JOINED');
+
+    // I-11: ids only.
+    const { rows } = await f.pool.query<{ detail: unknown }>(`select detail from audit_log where action = 'team.remove' and subject_id = $1`, [b!.id]);
+    expect(rows).toEqual([{ detail: { teamId: before?.id } }]);
+
+    // Two members removing each other, and a removal racing the member's own leave: one wins, never a deadlock.
+    const people = async (n: number) => {
+      const list = await Promise.all(Array.from({ length: n }, () => f.addParticipant(f.e1.id, { withPass: false })));
+      return Promise.all(list.map(async (p) => ({ id: p.id, email: await emailOf(p.id) })));
+    };
+    const call = async (fn: string, by: { id: string; email: string }, ...rest: string[]) =>
+      (await f.pool.query<{ r: string }>(`select ${fn}($1, $2, $3${rest.map((_, i) => `, $${i + 4}`).join('')}) as r`, [by.id, by.email, f.staff.vol1, ...rest])).rows[0]?.r;
+    for (let round = 0; round < 30; round++) {
+      const [x, y, z, w] = await people(4);
+      expect(await createTeam(db(), { id: f.staff.vol1, email: x!.email }, x!.id, `Duel ${round}`)).toBe('CREATED');
+      expect(await createTeam(db(), { id: f.staff.vol1, email: z!.email }, z!.id, `Quit ${round}`)).toBe('CREATED');
+      expect(await joinTeam(db(), { id: f.staff.vol1, email: y!.email }, y!.id, { code: (await teamRow(`Duel ${round}`))?.join_code ?? '' })).toBe('JOINED');
+      expect(await joinTeam(db(), { id: f.staff.vol1, email: w!.email }, w!.id, { code: (await teamRow(`Quit ${round}`))?.join_code ?? '' })).toBe('JOINED');
+      const [duel, quit] = await Promise.all([
+        Promise.all([call('team_remove', x!, y!.id, generateJoinCode()), call('team_remove', y!, x!.id, generateJoinCode())]),
+        Promise.all([call('team_remove', z!, w!.id, generateJoinCode()), call('team_leave', w!)]),
+      ]);
+      expect(duel.toSorted(), `round ${round}`).toEqual(['NOT_FOUND', 'REMOVED']);
+      expect([await teamOf(x!.id), await teamOf(y!.id)].filter(Boolean), `round ${round}`).toHaveLength(1);
+      expect([['REMOVED', 'NOT_FOUND'], ['NOT_FOUND', 'LEFT']], `round ${round}`).toContainEqual(quit);
+      expect([await teamOf(z!.id) !== null, await teamOf(w!.id)], `round ${round}`).toEqual([true, null]);
+    }
   });
 });

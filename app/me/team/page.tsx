@@ -15,7 +15,7 @@ import { currentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db/server';
 import { formatJoinCode } from '@/lib/domain/team';
 import { myEvent, type MyEvent } from '@/lib/me/profile';
-import { createTeam, declineInvite, joinTeam, leaveTeam, myTeam, tracksWithTeams, setLooking, setTeamTrack, setTrackInterests, type TeamCode } from '@/lib/me/team';
+import { createTeam, declineInvite, joinTeam, leaveTeam, myTeam, removeTeammate, tracksWithTeams, setLooking, setTeamTrack, setTrackInterests, type TeamCode } from '@/lib/me/team';
 import { TracksChart } from './tracks-chart';
 import { loadMyEvent, menuMetadata } from '../load';
 import { CopyCode } from './copy-code';
@@ -28,6 +28,7 @@ const NOTICES: Record<TeamCode, string> = {
   CREATED: '✓ Team created. Share the code with your teammates.',
   JOINED: '✓ You joined the team.',
   LEFT: '✓ You left the team.',
+  REMOVED: '✓ They’re off the team. Your team has a new join code: share it with anyone still joining.',
   SAVED: '✓ Track saved.',
   INVITED: '✓ Invite sent. They can accept on their Team page.',
   ALREADY_INVITED: '✕ You’ve already invited them.',
@@ -64,7 +65,9 @@ async function act(formData: FormData) {
         ? await joinTeam(db(), user, m.participantId, { code: field('code') })
         : op === 'leave'
           ? await leaveTeam(db(), user, m.participantId)
-          : await setTeamTrack(db(), user, m.participantId, field('trackId'));
+          : op === 'remove'
+            ? await removeTeammate(db(), user, m.participantId, field('memberId'))
+            : await setTeamTrack(db(), user, m.participantId, field('trackId'));
   // A refused join code comes back to its field (a join code isn't a secret, F15), so it can be fixed instead of retyped.
   const back = op === 'join' && r !== 'JOINED' ? `&code=${encodeURIComponent(field('code').slice(0, 20))}` : '';
   redirect(`/me/team?r=${r}${back}`);
@@ -210,7 +213,18 @@ async function MyTeamContent({ me: m, now, r, typedCode }: { me: MyEvent; now: D
           [border-bottom-color:var(--line)] [border-left-color:var(--line)] text-link text-[12px] font-semibold" aria-hidden="true">
                   {initials(name)}
                 </span>
-                {name}{id === m.participantId && ' (you)'}
+                <span>{name}{id === m.participantId && ' (you)'}</span>
+                {/* v0.11.44: any member can take another off the team while forming is open. */}
+                {open && id !== m.participantId && (
+                  <form action={act} className="ml-auto">
+                    <input type="hidden" name="op" value="remove" />
+                    <input type="hidden" name="memberId" value={id} />
+                    <ConfirmSubmit label={`Remove ${name}`} title={`Remove ${name} from ${team.name}?`} cancelLabel="Keep them" confirmLabel="Remove"
+                      message="They can’t rejoin with the current code: your team gets a new one.">
+                      Remove
+                    </ConfirmSubmit>
+                  </form>
+                )}
               </li>
             ))}
           </ul>

@@ -9,7 +9,7 @@ type Db = SupabaseClient<Database>;
 type Account = { id: string; email?: string | null };
 
 // SPEC F15 (v0.7): what the team_* SQL functions answer; INVALID_NAME is caught here before any call.
-const TEAM_CODES = ['CREATED', 'JOINED', 'LEFT', 'SAVED', 'IN_A_TEAM', 'NAME_TAKEN', 'BAD_CODE', 'TEAM_FULL', 'CLOSED', 'NOT_RELEASED', 'NOT_FOUND', 'INVITED', 'ALREADY_INVITED', 'NOT_LOOKING', 'SELF', 'DECLINED', 'BAD_TRACK'] as const;
+const TEAM_CODES = ['CREATED', 'JOINED', 'LEFT', 'SAVED', 'IN_A_TEAM', 'NAME_TAKEN', 'BAD_CODE', 'TEAM_FULL', 'CLOSED', 'NOT_RELEASED', 'NOT_FOUND', 'INVITED', 'ALREADY_INVITED', 'NOT_LOOKING', 'SELF', 'DECLINED', 'BAD_TRACK', 'REMOVED'] as const;
 export type TeamCode = (typeof TEAM_CODES)[number] | 'INVALID_NAME';
 
 // The functions act only on the row whose email is the account's, so a forged participant id changes nothing.
@@ -47,6 +47,13 @@ export async function leaveTeam(db: Db, user: Account, participantId: string): P
   const me = own(user, participantId);
   if (!me) return 'NOT_FOUND';
   return code('team_leave', await db.rpc('team_leave', me));
+}
+
+// v0.11.44 (F15): any member takes another off the team while forming is open; the team gets a new join code.
+export async function removeTeammate(db: Db, user: Account, participantId: string, memberId: string): Promise<TeamCode> {
+  const me = own(user, participantId);
+  if (!me || !z.uuid().safeParse(memberId).success) return 'NOT_FOUND';
+  return code('team_remove', await db.rpc('team_remove', { ...me, p_member_id: memberId, p_code: generateJoinCode() }));
 }
 
 export async function setTeamTrack(db: Db, user: Account, participantId: string, trackId: string): Promise<TeamCode> {

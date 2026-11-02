@@ -127,7 +127,7 @@ test('T-TEAM-07: tracks and forming from the admin page; A creates a team, B joi
   await b.page.getByRole('button', { name: 'Join team' }).click();
   await expect(b.page.getByText('✓ You joined the team.')).toBeVisible();
   await expect(b.page.getByRole('heading', { name: 'Data Wizards' })).toBeVisible();
-  await expect(b.page.getByText('Ada Fixture')).toBeVisible();
+  await expect(b.page.getByText('Ada Fixture', { exact: true })).toBeVisible();
   await expect(b.page.getByText('Ben Fixture (you)')).toBeVisible();
 
   await page.getByLabel('Tracks released').check();
@@ -187,7 +187,7 @@ test('T-TEAM-07: N opts into the directory, A invites by email, N accepts and bo
   await invites.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect(n.page.getByRole('heading', { name: 'Data Wizards' })).toBeVisible();
   await a.goto('/me/team');
-  await expect(a.getByText('Nia Fixture')).toBeVisible();
+  await expect(a.getByText('Nia Fixture', { exact: true })).toBeVisible();
   await aContext.close();
   await n.context.close();
 });
@@ -209,6 +209,42 @@ test('T-TEAM-07 (v0.11.25): Leave team asks first in a dialog; Keep my team keep
   await dialog.getByRole('button', { name: 'Leave team' }).click();
   await expect(a.page.getByRole('button', { name: 'Create team' })).toBeVisible();
   await a.context.close();
+});
+
+test('T-TEAM-10 (v0.11.44): a member removes a teammate after confirming; the team gets a new join code; none while forming is closed', async ({ browser }) => {
+  await f.pool.query('update events set teams_open = true where id = $1', [f.e1.id]);
+  const { rows } = await f.pool.query<{ id: string }>(`insert into teams (event_id, name, join_code) values ($1, 'Kick Off', 'KKKKKKKK') returning id`, [f.e1.id]);
+  await f.pool.query('update participants set team_id = $1 where id = any($2)', [rows[0]!.id, [f.p.A, f.p.B]]);
+  const a = await hacker(browser, f.p.A);
+  try {
+    await a.page.goto('/me/team');
+    const team = a.page.getByRole('region', { name: 'Kick Off' });
+    await expect(team.locator('strong')).toHaveText('KKKK-KKKK');
+    await expect(team.getByRole('button', { name: /^Remove/ })).toHaveCount(1); // Ben's; never your own row
+    await team.getByRole('button', { name: 'Remove Ben Fixture' }).click();
+    const dialog = a.page.getByRole('dialog', { name: 'Remove Ben Fixture from Kick Off?' });
+    await expect(dialog).toContainText('They can’t rejoin with the current code: your team gets a new one.');
+    await dialog.getByRole('button', { name: 'Keep them' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(team.getByText('Ben Fixture', { exact: true })).toBeVisible();
+
+    await team.getByRole('button', { name: 'Remove Ben Fixture' }).click();
+    await dialog.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(a.page.getByText('✓ They’re off the team. Your team has a new join code: share it with anyone still joining.')).toBeVisible();
+    await expect(team.getByText('Ben Fixture', { exact: true })).toHaveCount(0);
+    await expect(team.locator('strong')).toHaveText(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
+    await expect(team.locator('strong')).not.toHaveText('KKKK-KKKK');
+    expect((await f.pool.query('select team_id from participants where id = $1', [f.p.B])).rows[0]?.team_id).toBeNull();
+
+    // With forming closed, teammates stay listed but nobody can be removed.
+    await f.pool.query('update participants set team_id = $1 where id = $2', [rows[0]!.id, f.p.N]);
+    await f.pool.query('update events set teams_open = false where id = $1', [f.e1.id]);
+    await a.page.reload();
+    await expect(team.getByText('Nia Fixture', { exact: true })).toBeVisible();
+    await expect(team.getByRole('button', { name: /^Remove/ })).toHaveCount(0);
+  } finally {
+    await a.context.close();
+  }
 });
 
 test('T-TEAM-07: with forming closed, an invite says when it can be accepted and a team says how to leave', async ({ browser }) => {
@@ -258,7 +294,7 @@ test('T-TEAM-08 (v0.11.25): a hacker picks the tracks they want under Looking, b
   const ada = directory.getByRole('article', { name: 'Ada Fixture', exact: true });
   await expect(ada).toBeVisible();
   await expect(directory.getByRole('article')).toHaveCount(1);
-  await ada.locator('summary').click();
+  // v0.11.45: cards are open, so Wants to do shows without expanding.
   await expect(ada.locator('dt', { hasText: 'Wants to do' }).locator('xpath=following-sibling::dd[1]')).toHaveText('Best AI');
   await b.context.close();
 });
