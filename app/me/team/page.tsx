@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { ConfirmSubmit } from '@/components/confirm-submit';
+import { ClearResult } from '@/components/clear-result';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Input } from '@/components/ui/input';
 import type { Metadata } from 'next';
@@ -15,7 +16,7 @@ import { currentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db/server';
 import { formatJoinCode } from '@/lib/domain/team';
 import { myEvent, type MyEvent } from '@/lib/me/profile';
-import { createTeam, declineInvite, joinTeam, leaveTeam, myTeam, removeTeammate, tracksWithTeams, setLooking, setTeamTrack, setTrackInterests, type TeamCode } from '@/lib/me/team';
+import { createTeam, declineInvite, joinTeam, leaveTeam, myTeam, removeTeammate, saveLooking, tracksWithTeams, setTeamTrack, type TeamCode } from '@/lib/me/team';
 import { TracksChart } from './tracks-chart';
 import { loadMyEvent, menuMetadata } from '../load';
 import { CopyCode } from './copy-code';
@@ -24,12 +25,17 @@ export const metadata: Metadata = menuMetadata('Team');
 
 const initials = (name: string) => name.split(/\s+/).map((w) => Array.from(w)[0] ?? '').join('').slice(0, 2).toUpperCase();
 
-const NOTICES: Record<TeamCode, string> = {
+// v0.11.47: the page's own codes say which form answered, instead of guessing from the team ("Track saved").
+type Notice = TeamCode | 'LOOKING_SAVED' | 'INVITE_GONE';
+const NOTICES: Record<Notice, string> = {
   CREATED: '✓ Team created. Share the code with your teammates.',
   JOINED: '✓ You joined the team.',
   LEFT: '✓ You left the team.',
   REMOVED: '✓ They’re off the team. Your team has a new join code: share it with anyone still joining.',
   SAVED: '✓ Track saved.',
+  LOOKING_SAVED: '✓ Saved.',
+  INVITE_GONE: '✕ That invite is no longer open.',
+  RATE_LIMITED: '✕ Your team has sent a lot of invites. Try again in an hour.',
   INVITED: '✓ Invite sent. They can accept on their Team page.',
   ALREADY_INVITED: '✕ You’ve already invited them.',
   NOT_LOOKING: '✕ They’re no longer looking for a team.',
@@ -58,7 +64,7 @@ async function act(formData: FormData) {
   const r =
     op === 'accept' ? await joinTeam(db(), user, m.participantId, { teamId: field('teamId') })
     : op === 'decline' ? await declineInvite(db(), user, m.participantId, field('teamId'))
-    : op === 'looking' ? await saveLooking(user, m.participantId, field('looking') === 'on', formData.getAll('track').map(String))
+    : op === 'looking' ? await saveLooking(db(), user, m.participantId, field('looking') === 'on', formData.getAll('track').map(String))
     : op === 'create'
       ? await createTeam(db(), user, m.participantId, field('name'))
       : op === 'join'
@@ -68,15 +74,10 @@ async function act(formData: FormData) {
           : op === 'remove'
             ? await removeTeammate(db(), user, m.participantId, field('memberId'))
             : await setTeamTrack(db(), user, m.participantId, field('trackId'));
+  const notice: Notice = op === 'looking' && r === 'SAVED' ? 'LOOKING_SAVED' : op === 'accept' && r === 'BAD_CODE' ? 'INVITE_GONE' : r;
   // A refused join code comes back to its field (a join code isn't a secret, F15), so it can be fixed instead of retyped.
   const back = op === 'join' && r !== 'JOINED' ? `&code=${encodeURIComponent(field('code').slice(0, 20))}` : '';
-  redirect(`/me/team?r=${r}${back}`);
-}
-
-// v0.11.25: Looking and the tracks they want to do save together.
-async function saveLooking(user: { id: string; email: string | null }, participantId: string, on: boolean, tracks: string[]) {
-  const looking = await setLooking(db(), user, participantId, on);
-  return looking === 'SAVED' ? setTrackInterests(db(), user, participantId, tracks) : looking;
+  redirect(`/me/team?r=${notice}${back}`);
 }
 
 export default async function TeamPage(props: { searchParams: Promise<{ r?: string; code?: string }> }) {
@@ -120,9 +121,9 @@ async function MyTeamContent({ me: m, now, r, typedCode }: { me: MyEvent; now: D
   const { tracks, team, invites, myTrackIds } = await myTeam(db(), m);
   const live = Date.parse(m.event.endsAt) > now.getTime();
   const open = m.event.teamsOpen && live;
-  // Without a team, SAVED is the Looking switch and track interests (saved together).
-  const saved = m.lookingForTeam ? '✓ Saved. You’re listed under Looking for a team.' : '✓ Saved.';
-  const message = r === 'SAVED' && !team ? saved : r && r in NOTICES ? NOTICES[r as TeamCode] : null;
+  // Own keys only: `?r=toString` must not find Object.prototype's (v0.11.47).
+  const message = r === 'LOOKING_SAVED' && m.lookingForTeam ? '✓ Saved. You’re listed under Looking for a team.'
+    : r && Object.hasOwn(NOTICES, r) ? NOTICES[r as Notice] : null;
   // A refused join shows its error next to the code field, not up here.
   const joinError = typedCode !== undefined && !team && open && message?.startsWith('✕') ? message : null;
   const notice = joinError ? null : message;
@@ -130,6 +131,7 @@ async function MyTeamContent({ me: m, now, r, typedCode }: { me: MyEvent; now: D
 
   return (
     <>
+      <ClearResult />
       {notice && (
         <p role={notice.startsWith('✓') ? 'status' : 'alert'} className={notice.startsWith('✓') ? " text-ok" : " text-bad"}>
           {notice}

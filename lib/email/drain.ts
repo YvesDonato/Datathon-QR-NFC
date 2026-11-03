@@ -82,17 +82,20 @@ async function finish(db: Db, args: FinishArgs): Promise<void> {
   if (error) throw new Error(`finish_outbox failed (${error.code})`);
 }
 
-// What the drainer sends for one row; null cancels it.
-type Outgoing = Pick<EmailMessage, 'to' | 'subject' | 'html' | 'text' | 'inlineImages' | 'fileLabel'>;
+// What the drainer sends for one row; null cancels it. A team-invite email also says up to which invite it covers.
+type Outgoing = Pick<EmailMessage, 'to' | 'subject' | 'html' | 'text' | 'inlineImages' | 'fileLabel'> & { invitesUpTo?: string };
 
 async function processRow(opts: DrainOptions, row: OutboxRow): Promise<'sent' | 'retrying' | 'failed' | 'cancelled' | 'rateLimited'> {
   let providerId: string;
+  let invitesCovered: string | undefined;
   try {
-    const message = row.kind === 'staff_added' ? await staffEmail(opts, row) : await participantEmail(opts, row);
-    if (!message) {
+    const outgoing = row.kind === 'staff_added' ? await staffEmail(opts, row) : await participantEmail(opts, row);
+    if (!outgoing) {
       await finish(opts.db, { p_id: row.id, p_status: 'cancelled', p_claim_token: row.claim_token });
       return 'cancelled';
     }
+    const { invitesUpTo, ...message } = outgoing;
+    invitesCovered = invitesUpTo;
     // 3. Send.
     ({ id: providerId } = await opts.provider.send({ ...message, from: opts.from, idempotencyKey: `${row.id}:${row.attempts}` }));
   } catch (err) {
@@ -125,7 +128,20 @@ async function processRow(opts: DrainOptions, row: OutboxRow): Promise<'sent' | 
   // 4. Success. If this write fails, the row is retried and a second email goes out with a newer
   // code; only the newest works (accepted edge, SPEC F4).
   await finish(opts.db, { p_id: row.id, p_status: 'sent', p_provider_message_id: providerId, p_claim_token: row.claim_token });
+  if (invitesCovered && row.participant_id) await queueLaterInvites(opts, row.participant_id, invitesCovered);
   return 'sent';
+}
+
+// v0.11.47 (F15 step 8): an invite that arrived while this email was being sent wasn't in it, and its own email was
+// refused (one waits per person at a time), so it gets one an hour later, under the hourly limit.
+async function queueLaterInvites(opts: DrainOptions, participantId: string, after: string) {
+  const { count, error } = await opts.db.from('team_invites').select('team_id', { count: 'exact', head: true })
+    .eq('participant_id', participantId).gt('created_at', after);
+  if (error) throw new Error(`invite recount failed (${error.code})`);
+  if (!count) return;
+  const at = new Date((opts.now ?? (() => new Date()))().getTime() + 3_600_000).toISOString();
+  const { error: queueError } = await opts.db.from('email_outbox').insert({ participant_id: participantId, kind: 'team_invite', next_attempt_at: at });
+  if (queueError && queueError.code !== '23505') throw new Error(`invite follow-up failed (${queueError.code})`); // 23505: one is waiting already
 }
 
 // 1. Reload the participant; stop if they were deleted, or (for a pass) are no longer accepted,
@@ -135,7 +151,7 @@ async function participantEmail(opts: DrainOptions, row: OutboxRow): Promise<Out
   if (participantId === null) return null;
   const { data: p, error } = await opts.db
     .from('participants')
-    .select('first_name, email, status, deleted_at, emergency_name, overnight, team_status, team_id, events(slug, name, venue, starts_at, timezone, rsvp_reply_by)')
+    .select('first_name, email, status, deleted_at, emergency_name, overnight, team_status, team_id, events(slug, name, venue, starts_at, ends_at, timezone, rsvp_reply_by, teams_open)')
     .eq('id', participantId)
     .single();
   if (error) throw new Error(`participant load failed (${error.code})`);
@@ -145,6 +161,7 @@ async function participantEmail(opts: DrainOptions, row: OutboxRow): Promise<Out
   const event = { name: emailEventName(p.events.slug, p.events.name), venue: formalVenue(p.events.venue), startsAt: p.events.starts_at, timezone: p.events.timezone };
 
   let email: RenderedEmail;
+  let invitesUpTo: string | undefined;
   if (rsvp) {
     // 2. A fresh RSVP token, stored (hash only) BEFORE the send, like a pass (I-10); older links stop working.
     // Only while this job is still ours (an answer that cancelled it since the claim stops the resend) and,
@@ -170,13 +187,17 @@ async function participantEmail(opts: DrainOptions, row: OutboxRow): Promise<Out
     email = renderRsvpEmail({ firstName: p.first_name, event, rsvpUrl: `${opts.appOrigin}/rsvp#${token}`, closesAt, replyBy: earlierReplyBy(replyBy, closesAt, opts.now?.() ?? new Date()), reminder });
   } else if (row.kind === 'team_invite') {
     if (p.team_id !== null) return null; // joined a team since (v0.11.25): the invite no longer applies
+    // v0.11.47: only invites they can still accept: forming open, the event not over, a team with room.
+    if (!p.events.teams_open || Date.parse(p.events.ends_at) <= (opts.now ?? (() => new Date()))().getTime()) return null;
     const { data: invites, error: inviteError } = await opts.db.from('team_invites')
-      .select('teams!inner(name), participants!team_invites_invited_by_fkey(first_name)')
+      .select('created_at, teams!inner(name, participants(count)), participants!team_invites_invited_by_fkey(first_name)')
       .eq('participant_id', participantId).order('created_at', { ascending: false });
     if (inviteError) throw new Error(`invite load failed (${inviteError.code})`);
-    const invite = invites[0];
+    const open = invites.filter((i) => (i.teams.participants[0]?.count ?? 0) < 4);
+    const invite = open[0];
     if (!invite) return null;
-    email = renderTeamInviteEmail({ firstName: p.first_name, inviter: invite.participants?.first_name ?? 'A teammate', team: invite.teams.name, event: event.name, appOrigin: opts.appOrigin, count: invites.length });
+    invitesUpTo = invites[0]?.created_at;
+    email = renderTeamInviteEmail({ firstName: p.first_name, inviter: invite.participants?.first_name ?? 'A teammate', team: invite.teams.name, event: event.name, appOrigin: opts.appOrigin, count: open.length });
   } else if (row.kind === 'profile_reminder') {
     // F14 (v0.9): only while their profile still isn't finished.
     if (p.emergency_name !== null && p.overnight !== null && p.team_status !== null) return null;
@@ -198,7 +219,7 @@ async function participantEmail(opts: DrainOptions, row: OutboxRow): Promise<Out
     return null;
   }
 
-  return { to: p.email, ...email, fileLabel: toFileLabel(p.events.name, p.first_name) };
+  return { to: p.email, ...email, fileLabel: toFileLabel(p.events.name, p.first_name), invitesUpTo };
 }
 
 // F9 step 1 (v0.11.12): an existing account added as staff. Read when sent, so it carries their current role,

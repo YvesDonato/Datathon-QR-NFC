@@ -820,20 +820,29 @@ export function createAdminApi(deps: AdminDeps) {
       const body = z.object({ teamId: z.uuid().nullable() }).strict().safeParse(await readJson(request));
       if (!id) return notFound();
       if (!body.success) return badRequest();
-      const { data, error } = await db
-        .from('participants')
-        .update({ team_id: body.data.teamId })
-        .eq('id', id)
-        .eq('event_id', g.eventId)
-        .is('deleted_at', null)
-        .select('id')
-        .maybeSingle();
+      const teamId = body.data.teamId;
+      const notAccepted = () => json({ error: 'NOT_ACCEPTED', message: 'Only accepted hackers can be on a team.' }, 409);
+      const { data: before, error: readError } = await db.from('participants').select('team_id, status')
+        .eq('id', id).eq('event_id', g.eventId).is('deleted_at', null).maybeSingle();
+      if (readError) throw new Error(`team member load failed (${readError.code})`);
+      if (!before) return notFound();
+      // v0.11.47: only accepted hackers join a team (a stale Add after someone withdrew is refused).
+      if (teamId && before.status !== 'accepted') return notAccepted();
+      let update = db.from('participants').update({ team_id: teamId }).eq('id', id).eq('event_id', g.eventId).is('deleted_at', null);
+      if (teamId) update = update.eq('status', 'accepted');
+      const { data, error } = await update.select('id').maybeSingle();
       if (error?.code === '23514') return json({ error: 'TEAM_FULL', message: 'That team already has 4 people.' }, 409);
       if (error?.code === '23503') return notFound(); // another event's team
       if (error) throw new Error(`team member update failed (${error.code})`);
-      if (!data) return notFound();
-      await audit(g.eventId, g.userId, 'team.member', id, { teamId: body.data.teamId });
-      return json({ teamId: body.data.teamId });
+      if (!data) return teamId ? notAccepted() : notFound();
+      // v0.11.47: whoever is taken off a team (removed or moved) leaves it a new join code, like a hacker's Remove
+      // (F15 step 5), so they can't just rejoin with the one they know.
+      if (before.team_id && before.team_id !== teamId) {
+        const { error: codeError } = await db.from('teams').update({ join_code: generateJoinCode() }).eq('id', before.team_id);
+        if (codeError && codeError.code !== '23505') throw new Error(`join code change failed (${codeError.code})`); // 23505: about once in 10^10, the old code stays
+      }
+      await audit(g.eventId, g.userId, 'team.member', id, { teamId });
+      return json({ teamId });
     },
 
     // POST /api/admin/[slug]/sync  { dryRun }  (F10)

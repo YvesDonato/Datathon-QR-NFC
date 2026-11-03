@@ -9,7 +9,7 @@ type Db = SupabaseClient<Database>;
 type Account = { id: string; email?: string | null };
 
 // SPEC F15 (v0.7): what the team_* SQL functions answer; INVALID_NAME is caught here before any call.
-const TEAM_CODES = ['CREATED', 'JOINED', 'LEFT', 'SAVED', 'IN_A_TEAM', 'NAME_TAKEN', 'BAD_CODE', 'TEAM_FULL', 'CLOSED', 'NOT_RELEASED', 'NOT_FOUND', 'INVITED', 'ALREADY_INVITED', 'NOT_LOOKING', 'SELF', 'DECLINED', 'BAD_TRACK', 'REMOVED'] as const;
+const TEAM_CODES = ['CREATED', 'JOINED', 'LEFT', 'SAVED', 'IN_A_TEAM', 'NAME_TAKEN', 'BAD_CODE', 'TEAM_FULL', 'CLOSED', 'NOT_RELEASED', 'NOT_FOUND', 'INVITED', 'ALREADY_INVITED', 'NOT_LOOKING', 'SELF', 'DECLINED', 'BAD_TRACK', 'REMOVED', 'RATE_LIMITED'] as const;
 export type TeamCode = (typeof TEAM_CODES)[number] | 'INVALID_NAME';
 
 // The functions act only on the row whose email is the account's, so a forged participant id changes nothing.
@@ -88,11 +88,20 @@ export async function setLooking(db: Db, user: Account, participantId: string, o
   if (error) throw new Error(`directory preference failed (${error.code})`);
   if (!data) return 'NOT_FOUND';
   // v0.11.25: the profile's team answer follows the switch, so the two never disagree.
+  // v0.11.47: only while still teamless and not Looking, so an On tapped meanwhile (or a join) isn't undone.
   if (!on && data.team_status === 'looking') {
-    const { error: statusError } = await db.from('participants').update({ team_status: 'solo' }).eq('id', participantId).eq('team_status', 'looking');
+    const { error: statusError } = await db.from('participants').update({ team_status: 'solo' }).eq('id', participantId).eq('team_status', 'looking')
+      .eq('looking_for_team', false).is('team_id', null);
     if (statusError) throw new Error(`team status update failed (${statusError.code})`);
   }
   return 'SAVED';
+}
+
+// v0.11.25: the Team page saves Looking and the tracks a hacker wants together. v0.11.47: the tracks first, so a
+// refused save (a track deleted meanwhile, the event over) changes nothing.
+export async function saveLooking(db: Db, user: Account, participantId: string, on: boolean, trackIds: string[]): Promise<TeamCode> {
+  const tracks = await setTrackInterests(db, user, participantId, trackIds);
+  return tracks === 'SAVED' ? setLooking(db, user, participantId, on) : tracks;
 }
 
 // v0.11.25 (F15): the tracks a hacker wants to do, any number, any time. Replaces their whole set.
@@ -153,7 +162,8 @@ export async function myTeam(db: Db, me: MyEvent): Promise<MyTeam> {
   if (tracks.error) throw new Error(`tracks load failed (${tracks.error.code})`);
   if (team?.error) throw new Error(`team load failed (${team.error.code})`);
   if (invites.error) throw new Error(`invites load failed (${invites.error.code})`);
-  const t = team?.data;
+  // v0.11.47: their team only if they're still in it in this same read (removed since myEvent(): no team, no new code).
+  const t = team?.data?.participants.some((p) => p.id === me.participantId) ? team.data : null;
   return {
     tracks: tracks.data,
     myTrackIds: mine.data.map((t) => t.track_id),

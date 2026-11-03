@@ -116,4 +116,27 @@ describe('teams admin (SPEC §11, v0.7)', () => {
       expect((await f.pool.query('select 1 from teams where id = $1', [team!.id])).rowCount, `round ${round}`).toBe(0);
     }
   });
+
+  it('T-TEAM-04 (v0.11.47): only accepted people join a team; removing or moving someone gives their team a new join code', async () => {
+    expect((await c.call('createTeam', org, { slug: f.slug }, { method: 'POST', body: { name: 'Code Turn' } })).status).toBe(201);
+    expect((await c.call('createTeam', org, { slug: f.slug }, { method: 'POST', body: { name: 'Code Turn Two' } })).status).toBe(201);
+    const byName = async (name: string) => (await teams()).teams.find((t) => t.name === name)!;
+    const [team, other] = [await byName('Code Turn'), await byName('Code Turn Two')];
+    // A stale Add after someone withdrew, or anyone not accepted: refused.
+    for (const id of [f.p.Wd, f.p.C]) {
+      const r = await setTeam(id, team.id);
+      expect(r.status).toBe(409);
+      expect(obj(r.body)).toMatchObject({ error: 'NOT_ACCEPTED' });
+    }
+    const [p, q] = await Promise.all([f.addParticipant(f.e1.id, { withPass: false }), f.addParticipant(f.e1.id, { withPass: false })]);
+    expect((await setTeam(p.id, team.id)).status).toBe(200);
+    expect((await setTeam(q.id, team.id)).status).toBe(200);
+    expect((await setTeam(p.id, null)).status).toBe(200);
+    const afterRemove = await byName('Code Turn');
+    expect(afterRemove.code).not.toBe(team.code);
+    expect(afterRemove.code).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+    expect((await setTeam(q.id, other.id)).status).toBe(200); // a move takes them off their old team too
+    expect((await byName('Code Turn')).code).not.toBe(afterRemove.code);
+    expect((await byName('Code Turn Two')).code).toBe(other.code);
+  });
 });

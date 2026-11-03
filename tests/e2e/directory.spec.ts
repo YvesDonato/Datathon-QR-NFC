@@ -198,7 +198,8 @@ test('T-DIR-05: opt in through RSVP profile walkthrough, browse/filter/contact, 
   const nia = directory.getByRole('article', { name: 'Nia Fixture', exact: true });
   await expect(nia.getByText('Learning machine learning.')).toBeVisible(); // who they are, before inviting
   await nia.getByRole('button', { name: 'Invite Nia Fixture' }).click(); // visible without expanding
-  await expect(page).toHaveURL(new RegExp(`looking=1&pace=1&r=INVITED#h-${f.p.N}$`));
+  // v0.11.47: the result shows once, so `r` leaves the URL; the filters and the card stay.
+  await expect(page).toHaveURL(new RegExp(`looking=1&pace=1#h-${f.p.N}$`));
   await expect(page.getByRole('status').filter({ hasText: 'Invite sent' })).toBeVisible();
   await expect(nia).toContainText('✓ Invited');
   await expect(nia.getByRole('button', { name: 'Invite Nia Fixture' })).toHaveCount(0);

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { BrandMark } from '@/components/brand-mark';
+import { ClearResult } from '@/components/clear-result';
 import { Entrance } from '@/components/motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -60,6 +61,7 @@ const NOTICES: Record<string, string> = {
   NOT_LOOKING: 'They’re no longer looking for a team.',
   SELF: 'You can’t invite yourself.',
   TEAM_FULL: 'Your team already has 4 people.',
+  RATE_LIMITED: 'Your team has sent a lot of invites. Try again in an hour.',
   CLOSED: 'Team forming is closed.',
   NOT_FOUND: 'Something changed. Reload the page and try again.',
 };
@@ -85,7 +87,8 @@ export default async function HackersPage({ searchParams }: { searchParams: Prom
   for (const key of FILTER_KEYS) { const value = params[key]; if (value) back.set(key, value); }
   const onlyLooking = looking && !params.q?.trim() && !pace && !track;
   const canInvite = me.event.teamsOpen && Date.parse(me.event.endsAt) > now.getTime() && team && team.members.length < 4;
-  const notice = params.r ? NOTICES[params.r] : undefined;
+  // Own keys only: `?r=constructor` must not find Object.prototype's (v0.11.47).
+  const notice = params.r && Object.hasOwn(NOTICES, params.r) ? NOTICES[params.r] : undefined;
   return <Entrance><main className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 pt-6 pb-14">
     <div className="flex min-h-11 items-center gap-4">
       <Link href="/me" className="inline-flex min-h-11 shrink-0 items-center font-semibold">← Menu</Link>
@@ -118,7 +121,7 @@ export default async function HackersPage({ searchParams }: { searchParams: Prom
         <noscript><Button type="submit">Apply</Button></noscript>
       </div>
     </AutoFilters>
-    {notice && <p role={params.r === 'INVITED' ? 'status' : 'alert'}>{notice}</p>}
+    {notice && <><ClearResult /><p role={params.r === 'INVITED' ? 'status' : 'alert'}>{notice}</p></>}
     {!allowed && <p role="alert">Too many refreshes. Wait a minute, then try again.</p>}
     <p className="m-0 text-sm text-muted-foreground">Pace bar: 1 = here to learn, 2 = balanced, 3 = going for the win.</p>
     {looking && !team && <p className="copy m-0 text-muted-foreground">Create a team to invite them. <Link className="inline-flex min-h-11 items-center" href="/me/team">Open Team →</Link></p>}

@@ -1,5 +1,6 @@
 import { expect, test, type Browser } from '@playwright/test';
 import { consoleMailText, E2E_ORIGIN, signIn, NO_JS } from '../fixtures/e2e';
+import { generateJoinCode } from '@/lib/domain/team';
 import { createAccount, createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
 // SPEC F15 / §11 Teams (v0.7): organizers open forming and release tracks; hackers team up from their menu.
@@ -297,4 +298,59 @@ test('T-TEAM-08 (v0.11.25): a hacker picks the tracks they want under Looking, b
   // v0.11.45: cards are open, so Wants to do shows without expanding.
   await expect(ada.locator('dt', { hasText: 'Wants to do' }).locator('xpath=following-sibling::dd[1]')).toHaveText('Best AI');
   await b.context.close();
+});
+
+test('T-TEAM-11 (v0.11.47): crafted result links load; a result shows once; an invite whose team is gone says so', async ({ browser }) => {
+  await f.pool.query('update events set teams_open = true where id = $1', [f.e1.id]);
+  const a = await hacker(browser, f.p.A);
+  const n = await hacker(browser, f.p.N);
+  try {
+    // Object.prototype's names in ?r= crash neither page.
+    await a.page.goto('/me/team?r=toString');
+    await expect(a.page.getByRole('heading', { name: 'Team', exact: true })).toBeVisible();
+    await a.page.goto('/me/hackers?r=constructor');
+    await expect(a.page.getByRole('heading', { name: 'Hackers', exact: true })).toBeVisible();
+
+    // A result shows once: it leaves the URL, so a reload doesn't repeat it.
+    await a.page.goto('/me/team');
+    await a.page.getByLabel('Team name').fill('Shown Once');
+    await a.page.getByRole('button', { name: 'Create team' }).click();
+    await expect(a.page.getByText('✓ Team created.', { exact: false })).toBeVisible();
+    await expect(a.page).not.toHaveURL(/[?&]r=/);
+    await a.page.reload();
+    await expect(a.page.getByRole('heading', { name: 'Shown Once' })).toBeVisible();
+    await expect(a.page.getByText('✓ Team created.', { exact: false })).toHaveCount(0);
+
+    // N opens an invite, then the team is deleted before N accepts.
+    await f.pool.query(`insert into team_invites (team_id, participant_id, event_id, invited_by) select team_id, $2, event_id, id from participants where id = $1`, [f.p.A, f.p.N]);
+    await n.page.goto('/me/team');
+    const invites = n.page.getByRole('region', { name: 'Pending invites' });
+    await expect(invites).toContainText('Shown Once');
+    await f.pool.query(`delete from teams where name = 'Shown Once' and event_id = $1`, [f.e1.id]);
+    await invites.getByRole('button', { name: 'Accept', exact: true }).click();
+    await expect(n.page.getByText('✕ That invite is no longer open.')).toBeVisible();
+  } finally {
+    await a.context.close();
+    await n.context.close();
+  }
+});
+
+test('T-TEAM-09 (v0.11.47): on a phone, a track with 20 teams stays inside the chart', async ({ browser }) => {
+  const { rows: [crowded] } = await f.pool.query<{ id: string }>(`insert into tracks (event_id, name) values ($1, 'Crowded') returning id`, [f.e1.id]);
+  await f.pool.query(`insert into teams (event_id, name, join_code, track_id) select $1, 'Crowd ' || g, ($3::text[])[g], $2 from generate_series(1, 20) g`,
+    [f.e1.id, crowded!.id, Array.from({ length: 20 }, () => generateJoinCode())]);
+  await f.pool.query('update events set tracks_released = true where id = $1', [f.e1.id]);
+  const a = await hacker(browser, f.p.A);
+  try {
+    await a.page.setViewportSize({ width: 390, height: 844 });
+    await a.page.goto('/me/team');
+    const bar = a.page.getByRole('group', { name: 'Crowded: 20 teams' }).locator('.track-bar');
+    await expect(bar.getByRole('button')).toHaveCount(20);
+    await a.page.waitForTimeout(1200); // the bars grow in on load
+    const [lastRight, plotRight] = await bar.evaluate((el) => [el.lastElementChild!.getBoundingClientRect().right, el.parentElement!.getBoundingClientRect().right]);
+    expect(lastRight).toBeLessThanOrEqual(plotRight! + 0.5);
+    expect(await a.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  } finally {
+    await a.context.close();
+  }
 });

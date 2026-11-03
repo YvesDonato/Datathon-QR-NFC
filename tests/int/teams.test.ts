@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { generateJoinCode } from '@/lib/domain/team';
 import { generateToken } from '@/lib/domain/token';
-import { createTeam, joinTeam, leaveTeam, removeTeammate, setTeamTrack } from '@/lib/me/team';
+import { hackerDirectory } from '@/lib/me/hackers';
+import { myEvent } from '@/lib/me/profile';
+import { createTeam, inviteTeammate, joinTeam, leaveTeam, myTeam, removeTeammate, saveLooking, setLooking, setTeamTrack, setTrackInterests } from '@/lib/me/team';
 import { serviceClient } from '../fixtures/mail';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
@@ -200,6 +202,108 @@ describe('hacker teams (SPEC F15, v0.7)', () => {
       expect([await teamOf(x!.id), await teamOf(y!.id)].filter(Boolean), `round ${round}`).toHaveLength(1);
       expect([['REMOVED', 'NOT_FOUND'], ['NOT_FOUND', 'LEFT']], `round ${round}`).toContainEqual(quit);
       expect([await teamOf(z!.id) !== null, await teamOf(w!.id)], `round ${round}`).toEqual([true, null]);
+    }
+  });
+
+  // v0.11.47: edge cases two reviews of the Team section found.
+  const people = (n: number) => Promise.all(Array.from({ length: n }, () => f.addParticipant(f.e1.id, { withPass: false }).then((p) => p.id)));
+  const field = async (id: string, column: string) => (await f.pool.query(`select ${column} as v from participants where id = $1`, [id])).rows[0]?.v;
+  const sentBy = async (id: string) => Number((await f.pool.query('select count(*) from team_invites where invited_by = $1', [id])).rows[0]?.count);
+
+  it('T-TEAM-11 (v0.11.47): a member who leaves a team, however they leave, takes their sent invites and their "I have a team" answer with them', async () => {
+    await setOpen(f.e1.id, true);
+    const [a, b, c, d, e, g, x, y, z, v] = await people(10);
+    expect(await createTeam(db(), await as(a!), a!, 'Edge Case')).toBe('CREATED');
+    const code = (await teamRow('Edge Case'))?.join_code ?? '';
+    for (const m of [b!, c!]) expect(await joinTeam(db(), await as(m), m, { code })).toBe('JOINED');
+    await f.pool.query(`update participants set looking_for_team = true where id = any($1)`, [[x, y, z, v]]);
+    await f.pool.query(`update participants set team_status = 'team' where id = any($1)`, [[b, c]]);
+    for (const [by, to] of [[a, x], [b, y], [c, z]] as const) expect(await inviteTeammate(db(), await as(by!), by!, to!)).toBe('INVITED');
+
+    // Removed, left, withdrawn: their invites go; the team's other invites stay.
+    expect(await removeTeammate(db(), await as(a!), a!, b!)).toBe('REMOVED');
+    expect(await leaveTeam(db(), await as(c!), c!)).toBe('LEFT');
+    expect(await joinTeam(db(), await as(d!), d!, { code: (await teamRow('Edge Case'))?.join_code ?? '' })).toBe('JOINED');
+    expect(await inviteTeammate(db(), await as(d!), d!, v!)).toBe('INVITED');
+    await f.pool.query(`update participants set status = 'withdrawn' where id = $1`, [d]);
+    expect([await sentBy(b!), await sentBy(c!), await sentBy(d!), await sentBy(a!)]).toEqual([0, 0, 0, 1]);
+    // An organizer moving someone to another team: the same.
+    expect(await createTeam(db(), await as(e!), e!, 'Edge Other')).toBe('CREATED');
+    expect(await joinTeam(db(), await as(g!), g!, { code: (await teamRow('Edge Other'))?.join_code ?? '' })).toBe('JOINED');
+    expect(await inviteTeammate(db(), await as(g!), g!, y!)).toBe('INVITED');
+    await f.pool.query('update participants set team_id = $1 where id = $2', [(await teamRow('Edge Case'))?.id, g]);
+    expect(await sentBy(g!)).toBe(0);
+
+    // "I have a team" no longer holds once they're out: solo, still a finished answer, listed nowhere.
+    expect([await field(b!, 'team_status'), await field(c!, 'team_status')]).toEqual(['solo', 'solo']);
+    expect([await field(b!, 'looking_for_team'), await field(c!, 'looking_for_team')]).toEqual([false, false]);
+  });
+
+  it('T-TEAM-11 (v0.11.47): a tombstone that empties a team deletes it; a page read after a removal shows no team', async () => {
+    await setOpen(f.e1.id, true);
+    const [lone, a, b] = await people(3);
+    expect(await createTeam(db(), await as(lone!), lone!, 'Lone Edge')).toBe('CREATED');
+    await f.pool.query('select delete_participant($1, $2, $3)', [f.e1.id, lone, f.staff.org1]);
+    expect(await teamRow('Lone Edge')).toBeUndefined();
+
+    expect(await createTeam(db(), await as(a!), a!, 'Stale Read')).toBe('CREATED');
+    const team = await teamRow('Stale Read');
+    expect(await joinTeam(db(), await as(b!), b!, { code: team?.join_code ?? '' })).toBe('JOINED');
+    const before = await myEvent(db(), (await as(b!)).email, new Date());
+    expect(before?.teamId).toBe(team?.id);
+    expect(await removeTeammate(db(), await as(a!), a!, b!)).toBe('REMOVED');
+    // B's page had already read its team id when A removed B: it must not show the team (or its new code).
+    expect((await myTeam(db(), before!)).team).toBeNull();
+  });
+
+  it('T-TEAM-11 (v0.11.47): a refused Looking save changes nothing; racing On/Off taps never end Looking with "solo"', async () => {
+    await setOpen(f.e1.id, true);
+    const [g, h] = await people(2);
+    const gone = await track(f.e1.id, 'Edge deleted track');
+    await f.pool.query('delete from tracks where id = $1', [gone]);
+    expect(await saveLooking(db(), await as(g!), g!, true, [gone])).toBe('BAD_TRACK');
+    expect(await field(g!, 'looking_for_team')).toBe(false);
+    await f.pool.query(`update events set ends_at = now() - interval '1 minute', starts_at = now() - interval '1 day' where id = $1`, [f.e1.id]);
+    expect(await saveLooking(db(), await as(g!), g!, true, [])).toBe('NOT_FOUND');
+    await f.pool.query(`update events set starts_at = now(), ends_at = now() + interval '1 day' where id = $1`, [f.e1.id]);
+    expect(await field(g!, 'looking_for_team')).toBe(false);
+
+    const asH = await as(h!);
+    for (let round = 0; round < 30; round++) {
+      await f.pool.query(`update participants set looking_for_team = true, team_status = 'looking' where id = $1`, [h]);
+      await Promise.all([setLooking(db(), asH, h!, false), setLooking(db(), asH, h!, true)]);
+      const state = [await field(h!, 'looking_for_team'), await field(h!, 'team_status')];
+      expect([[true, 'looking'], [false, 'solo']], `round ${round}`).toContainEqual(state);
+    }
+  });
+
+  it('T-TEAM-11 (v0.11.47): at most 20 invites an hour per team; the Track filter skips hackers in a team; deleting a track mid-save never errors', async () => {
+    await setOpen(f.e1.id, true);
+    const [inviter, ...targets] = await people(22);
+    await f.pool.query(`update participants set looking_for_team = true where id = any($1)`, [targets]);
+    expect(await createTeam(db(), await as(inviter!), inviter!, 'Busy Inviters')).toBe('CREATED');
+    const results = [];
+    for (const t of targets.slice(0, 21)) results.push(await inviteTeammate(db(), await as(inviter!), inviter!, t));
+    expect(results.slice(0, 20).every((r) => r === 'INVITED')).toBe(true);
+    expect(results[20]).toBe('RATE_LIMITED');
+
+    // Wants to do is hidden on a teamed hacker's card, so the Track filter doesn't match them either.
+    const ai = await track(f.e1.id, 'Edge filter track');
+    const [free, teamed, viewer] = [targets[20]!, inviter!, targets[0]!];
+    await f.pool.query(`insert into participant_tracks (participant_id, track_id, event_id) select unnest($1::uuid[]), $2, $3`, [[free, teamed], ai, f.e1.id]);
+    await f.pool.query('update participants set directory_opt_in = true where id = any($1)', [[free, teamed]]);
+    const me = await myEvent(db(), (await as(viewer)).email, new Date());
+    const found = (await hackerDirectory(db(), me!, (await as(viewer)).email, { looking: false, search: '', pace: '', track: ai })).people.map((p) => p.id);
+    expect(found).toEqual([free]);
+
+    // An organizer deleting a track while a hacker saves their picks: one waits for the other.
+    const asV = await as(viewer);
+    for (let round = 0; round < 30; round++) {
+      const [picked, kept] = [await track(f.e1.id, `Race pick ${round}`), await track(f.e1.id, `Race keep ${round}`)];
+      expect(await setTrackInterests(db(), asV, viewer, [picked])).toBe('SAVED');
+      const [save, del] = await Promise.allSettled([setTrackInterests(db(), asV, viewer, [picked, kept]), f.pool.query('delete from tracks where id = $1', [picked])]);
+      expect(del.status, `round ${round}`).toBe('fulfilled');
+      expect(save.status === 'fulfilled' ? save.value : save.reason, `round ${round}`).toMatch(/^(SAVED|BAD_TRACK)$/);
     }
   });
 });
