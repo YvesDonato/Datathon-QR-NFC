@@ -69,6 +69,11 @@ const metricsSchema = z.object({
   notFound: z.array(z.object({ staffUserId: z.string(), displayName: z.string().nullable(), count: z.number() })),
 });
 
+const leaderboardSchema = z.object({
+  frozenAt: z.string().nullable(),
+  rows: z.array(z.object({ rank: z.number(), name: z.string(), points: z.number() }).strict()),
+}).strict();
+
 // §11: the Sheet link (Sync page) and, since v0.6, the hackers' schedule and emergency info (Info page).
 const eventUpdate = z
   .object({
@@ -574,6 +579,31 @@ export function createAdminApi(deps: AdminDeps) {
       if (data === 'NOT_FOUND') return notFound();
       if (data === 'LAST_ORGANIZER') return json({ code: data }, 409);
       return json({ code: data });
+    },
+
+    // F17 step 6 (proposed): the connection leaderboard for the projector: rank, "First L." and points, top 10.
+    async getLeaderboard(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const { data, error } = await db.rpc('connection_leaderboard', { p_event_id: g.eventId, p_limit: 10 });
+      if (error) throw new Error(`connection_leaderboard failed (${error.code})`);
+      return json(leaderboardSchema.parse(data));
+    },
+
+    // Freeze before prizes: the board stays as of this moment until unfrozen. Audited with no detail.
+    async freezeLeaderboard(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const body = z.object({ frozen: z.boolean() }).strict().safeParse(await readJson(request));
+      if (!body.success) return badRequest();
+      const { frozen } = body.data;
+      const { error } = await db
+        .from('events')
+        .update({ leaderboard_frozen_at: frozen ? now().toISOString() : null })
+        .eq('id', g.eventId);
+      if (error) throw new Error(`leaderboard freeze failed (${error.code})`);
+      await audit(g.eventId, g.userId, frozen ? 'leaderboard.freeze' : 'leaderboard.unfreeze', g.eventId, {});
+      return json({ frozen });
     },
 
     // GET /api/admin/[slug]/event
