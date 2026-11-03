@@ -13,8 +13,9 @@ import { formatEventDateTime } from '@/lib/domain/event-time';
 import { env } from '@/lib/env';
 import { formalVenue, venueMapUrl } from '@/lib/email/links';
 import { myConnections, myRank } from '@/lib/me/connections';
+import { myWorkshops } from '@/lib/me/workshops';
 import { myPasses } from '@/lib/pass/mine';
-import { ChevronIcon, ConnectIcon, EmergencyIcon, HackersIcon, ProfileIcon, QrIcon, ScheduleIcon, TeamIcon } from './icons';
+import { ChevronIcon, ConnectIcon, EmergencyIcon, HackersIcon, ProfileIcon, QrIcon, ScheduleIcon, TeamIcon, WorkshopIcon } from './icons';
 import { LinksDropdown } from './links-dropdown';
 import { normalizeEmail } from '@/lib/domain/normalize';
 import { loadMe, menuMetadata } from './load';
@@ -28,12 +29,13 @@ export default async function MePage() {
   // v0.11.25: the pass and the staff roles (v0.4.1: links to their events; the admin and scanner pages check
   // the role again) don't depend on each other, so they load together.
   // F17 (proposed): connections and rank load with them, for the session's own participant only.
-  const [passes, { data: roles, error }, connections, rank] = await Promise.all([
+  const [passes, { data: roles, error }, connections, rank, workshops] = await Promise.all([
     m ? myPasses(db(), user.email ?? '', env().PASS_TOKEN_SECRET, new Date()) : Promise.resolve([]),
     db().from('event_staff').select('role, events!inner(slug, name, starts_at)').eq('user_id', user.id)
       .order('starts_at', { referencedTable: 'events', ascending: false }),
     m ? myConnections(db(), m.participantId, 0) : Promise.resolve(null),
     m ? myRank(db(), m.participantId) : Promise.resolve(null),
+    m ? myWorkshops(db(), m.participantId) : Promise.resolve(null),
   ]);
   if (error) throw new Error(`event_staff lookup failed (${error.code})`);
   const pass = m ? passes.find((p) => p.participantId === m.participantId)?.pass : undefined;
@@ -228,6 +230,12 @@ export default async function MePage() {
                 icon={<ConnectIcon className="tw-me-itemIcon [flex:0_0_auto] w-[22px] h-[22px] text-accent" />}
                 label="Connections"
                 hint={connectionsHint(connections, rank)}
+              />
+              <Item
+                href="/me/workshops"
+                icon={<WorkshopIcon className="tw-me-itemIcon [flex:0_0_auto] w-[22px] h-[22px] text-accent" />}
+                label="Workshops"
+                hint={!workshops || workshops.workshops.length === 0 ? 'Tap your badge at a workshop' : `${workshops.workshops.length} attended`}
               />
               <Item href="/me/team" icon={<TeamIcon className="tw-me-itemIcon [flex:0_0_auto] w-[22px] h-[22px] text-accent" />} label="Team" hint={teamHint} />
               <Item

@@ -86,6 +86,8 @@ const eventUpdate = z
     rsvpDeadline: z.iso.datetime().refine((at) => Date.parse(at) > Date.now()).nullable().optional(),
     // v0.11.28: the date shown to invitees (and the reminder days); not after the deadline (a database check).
     rsvpReplyBy: z.iso.datetime().refine((at) => Date.parse(at) > Date.now()).nullable().optional(),
+    // Proposed §8 step 11b: minutes between check-ins to different workshops; 0 turns the cooldown off.
+    sessionCooldownMinutes: z.number().int().min(0).max(120).optional(),
   })
   .strict()
   .refine((b) => Object.keys(b).length > 0);
@@ -180,7 +182,7 @@ export function createAdminApi(deps: AdminDeps) {
   }
 
   async function loadEvent(eventId: string) {
-    const { data, error } = await db.from('events').select('name, venue, starts_at, ends_at, timezone, sheet_id, schedule, emergency_info, teams_open, tracks_released, rsvp_deadline, rsvp_reply_by').eq('id', eventId).single();
+    const { data, error } = await db.from('events').select('name, venue, starts_at, ends_at, timezone, sheet_id, schedule, emergency_info, teams_open, tracks_released, rsvp_deadline, rsvp_reply_by, session_cooldown_minutes').eq('id', eventId).single();
     if (error) throw new Error(`event load failed (${error.code})`);
     return data;
   }
@@ -628,6 +630,7 @@ export function createAdminApi(deps: AdminDeps) {
         tracksReleased: e.tracks_released,
         rsvpDeadline: e.rsvp_deadline && new Date(e.rsvp_deadline).toISOString(),
         rsvpReplyBy: e.rsvp_reply_by && new Date(e.rsvp_reply_by).toISOString(),
+        sessionCooldownMinutes: e.session_cooldown_minutes,
         lastSyncAt: lastSync ? new Date(lastSync.created_at).toISOString() : null,
       });
     },
@@ -638,7 +641,7 @@ export function createAdminApi(deps: AdminDeps) {
       if (g instanceof Response) return g;
       const body = eventUpdate.safeParse(await readJson(request));
       if (!body.success) return badRequest();
-      const { sheet, schedule, emergencyInfo, teamsOpen, tracksReleased, rsvpDeadline, rsvpReplyBy } = body.data;
+      const { sheet, schedule, emergencyInfo, teamsOpen, tracksReleased, rsvpDeadline, rsvpReplyBy, sessionCooldownMinutes } = body.data;
       const sheetId = sheet === undefined || sheet === null ? null : parseSheetId(sheet);
       if (sheet !== undefined && sheet !== null && sheetId === null) return badRequest();
       const { error } = await db
@@ -651,12 +654,13 @@ export function createAdminApi(deps: AdminDeps) {
           ...(tracksReleased !== undefined && { tracks_released: tracksReleased }),
           ...(rsvpDeadline !== undefined && { rsvp_deadline: rsvpDeadline }),
           ...(rsvpReplyBy !== undefined && { rsvp_reply_by: rsvpReplyBy }),
+          ...(sessionCooldownMinutes !== undefined && { session_cooldown_minutes: sessionCooldownMinutes }),
         })
         .eq('id', g.eventId);
       if (error?.code === '23514') return badRequest(); // a reply-by date after the deadline
       if (error) throw new Error(`event update failed (${error.code})`);
       if (sheet !== undefined) await audit(g.eventId, g.userId, 'event.sheet_link', g.eventId, { linked: sheetId !== null });
-      if (schedule !== undefined || emergencyInfo !== undefined || rsvpDeadline !== undefined || rsvpReplyBy !== undefined) await audit(g.eventId, g.userId, 'event.info', g.eventId, {});
+      if (schedule !== undefined || emergencyInfo !== undefined || rsvpDeadline !== undefined || rsvpReplyBy !== undefined || sessionCooldownMinutes !== undefined) await audit(g.eventId, g.userId, 'event.info', g.eventId, {});
       const flags = { ...(teamsOpen !== undefined && { teamsOpen }), ...(tracksReleased !== undefined && { tracksReleased }) };
       if (Object.keys(flags).length > 0) await audit(g.eventId, g.userId, 'event.teams', g.eventId, flags);
       return json({
@@ -665,6 +669,7 @@ export function createAdminApi(deps: AdminDeps) {
         ...(emergencyInfo !== undefined && { emergencyInfo }),
         ...(rsvpDeadline !== undefined && { rsvpDeadline: rsvpDeadline && new Date(rsvpDeadline).toISOString() }),
         ...(rsvpReplyBy !== undefined && { rsvpReplyBy: rsvpReplyBy && new Date(rsvpReplyBy).toISOString() }),
+        ...(sessionCooldownMinutes !== undefined && { sessionCooldownMinutes }),
         ...flags,
       });
     },
