@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { myWorkshops } from '@/lib/me/workshops';
 import { adminClient, obj } from '../fixtures/admin-api';
 import { serviceClient } from '../fixtures/mail';
+import { scanApi } from '../fixtures/scan-api';
 import { signInAs } from '../fixtures/staff';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
@@ -89,6 +90,23 @@ describe('workshop cooldown (SPEC §8 step 11b)', () => {
     const { uid } = await f.linkBadge(a);
     expect((await f.scan({ cp: w1, staff: f.staff.vol1, token: token ?? '' })).code).toBe('ACCEPTED');
     expect((await f.badgeScan({ cp: w2, staff: f.staff.vol1, uid })).code).toBe('SESSION_COOLDOWN');
+  });
+
+  it('T-SCAN-31: through POST /api/scan: the response carries when it opens, private fields stay out, and the attempt is logged', async () => {
+    const [w1, w2, a] = [await workshop(), await workshop(), await hacker()];
+    await f.pool.query(`update participants set dietary_notes = 'Vegan', allergies = 'Peanuts', allergy_severity = 'severe' where id = $1`, [a]);
+    const api = scanApi();
+    const jwt = await signInAs(f.staffEmail.vol1);
+    const scan = (checkpointId: string) => api.scan(jwt, { checkpointId, method: 'manual', participantId: a });
+    expect((await scan(w1)).body.code).toBe('ACCEPTED');
+    const { status, body } = await scan(w2);
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ code: 'SESSION_COOLDOWN', cooldownMinutes: 5, serverTime: expect.any(String), availableAt: expect.any(String) });
+    expect(Date.parse(String(body.availableAt))).toBeGreaterThan(Date.parse(String(body.serverTime)));
+    expect(body.participant).toEqual({ id: a, displayName: expect.any(String), status: 'accepted', dietaryNotes: null }); // §9.1: no notes or allergies on a refusal
+    const { rows: logged } = await f.pool.query('select 1 from scan_attempts where checkpoint_id = $1 and participant_id = $2 and result_code = $3', [w2, a, 'SESSION_COOLDOWN']);
+    expect(logged).toHaveLength(1);
+    expect(await rows(a, w2)).toBe(0);
   });
 
   it('T-CONC-09: the same person at two workshops at the same moment: exactly one ACCEPTED, one SESSION_COOLDOWN', async () => {

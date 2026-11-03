@@ -28,3 +28,6 @@ jobs:
       - run: pnpm vitest run --project int tests/int/connections.test.ts -t T-CONN-02
         env:
           CONC_ITERATIONS: '100'
+      - run: pnpm vitest run --project int tests/int/workshops.test.ts -t T-CONC-09
+        env:
+          CONC_ITERATIONS: '100'

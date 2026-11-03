@@ -553,6 +553,9 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"connection_analytics":
+{ Args: { "p_event_id": string }; Returns: Json
+                           },
 "connection_leaderboard":
 { Args: { "p_event_id": string,"p_limit": number }; Returns: Json
                            },
@@ -636,6 +639,12 @@ isOneToOne: false
                            },
 "retain_connections":
 { Args: never; Returns: number
+                           },
+"workshop_analytics":
+{ Args: { "p_event_id": string }; Returns: Json
+                           },
+"workshop_attendance":
+{ Args: { "p_event_id": string }; Returns: Json
                            },
 "revoke_pass":
 { Args: { "p_actor": string,"p_event_id": string,"p_participant_id": string }; Returns: string

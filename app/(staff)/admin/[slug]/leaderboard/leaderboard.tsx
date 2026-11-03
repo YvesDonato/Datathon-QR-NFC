@@ -49,6 +49,7 @@ export function Leaderboard({ slug }: { slug: string }) {
   const frozen = board?.frozenAt != null;
   return (
     <div className="grid gap-[16px]">
+      <h1>Leaderboard</h1>
       <div className="flex flex-wrap items-center gap-[8px]">
         <Button type="button" variant="outline" onClick={() => void screen.current?.requestFullscreen()}>
           Full screen
@@ -68,7 +69,7 @@ export function Leaderboard({ slug }: { slug: string }) {
         className="grid gap-[24px] p-[32px_24px] rounded-card [background:var(--card)] [border-width:1px] [border-style:solid] [border-color:var(--line)] [&:fullscreen]:p-[6vh_8vw] [&:fullscreen]:[background:var(--bg)]"
       >
         <div className="grid gap-[4px] text-center">
-          <h2 id="board-heading" className="m-0 text-[clamp(28px,_5vw,_64px)] leading-[1.1]">
+          <h2 id="board-heading" className="m-0 text-center justify-self-center text-[clamp(28px,_5vw,_64px)] leading-[1.1]">
             Most connections
           </h2>
           <p className="m-0 text-muted-foreground text-[clamp(14px,_1.6vw,_22px)]" role="status">

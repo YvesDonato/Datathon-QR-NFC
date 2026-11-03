@@ -69,6 +69,27 @@ const metricsSchema = z.object({
   notFound: z.array(z.object({ staffUserId: z.string(), displayName: z.string().nullable(), count: z.number() })),
 });
 
+// Proposed §13 additions: workshop and connection analytics, counts only.
+const bucketsSchema = z.array(z.object({ bucketUtc: z.string(), count: z.number() }).strict());
+const workshopAnalyticsSchema = z.object({
+  checkedIn: z.number(),
+  attendees: z.number(),
+  checkIns: z.number(),
+  cooldownMinutes: z.number(),
+  cooldownRefusals: z.number(),
+  distribution: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  workshops: z.array(z.object({ id: z.string(), name: z.string(), isOpen: z.boolean(), capacity: z.number().nullable(), startsAt: z.string().nullable(), attendees: z.number() }).strict()),
+  buckets: bucketsSchema,
+}).strict();
+const workshopAttendanceSchema = z.array(z.object({ workshop: z.string(), firstName: z.string(), lastName: z.string(), scannedAt: z.string(), method: z.string() }).strict());
+const connectionAnalyticsSchema = z.object({
+  mutual: z.number(),
+  waiting: z.number(),
+  checkedIn: z.number(),
+  connectedPeople: z.number(),
+  buckets: bucketsSchema,
+}).strict();
+
 const leaderboardSchema = z.object({
   frozenAt: z.string().nullable(),
   rows: z.array(z.object({ rank: z.number(), name: z.string(), points: z.number() }).strict()),
@@ -583,6 +604,43 @@ export function createAdminApi(deps: AdminDeps) {
       return json({ code: data });
     },
 
+    // GET /api/admin/[slug]/analytics/workshops (proposed §13): attendance per workshop, how many workshops each
+    // checked-in hacker attended (0, 1, 2, 3+), cooldown refusals and check-ins per 15 minutes.
+    async getWorkshopAnalytics(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const [{ data, error }, event] = await Promise.all([db.rpc('workshop_analytics', { p_event_id: g.eventId }), loadEvent(g.eventId)]);
+      if (error) throw new Error(`workshop_analytics failed (${error.code})`);
+      const a = workshopAnalyticsSchema.parse(data);
+      return json({
+        ...a,
+        timezone: event.timezone,
+        workshops: a.workshops.map((w) => ({ ...w, fill: w.capacity ? round4(w.attendees / w.capacity) : null })),
+        buckets: a.buckets.map((b) => {
+          const bucketUtc = new Date(b.bucketUtc).toISOString();
+          return { bucketUtc, label: bucketLabel(bucketUtc, event.timezone), count: b.count };
+        }),
+      });
+    },
+
+    // GET /api/admin/[slug]/analytics/connections (proposed §13, F17): totals only, never who met whom.
+    async getConnectionAnalytics(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const [{ data, error }, event] = await Promise.all([db.rpc('connection_analytics', { p_event_id: g.eventId }), loadEvent(g.eventId)]);
+      if (error) throw new Error(`connection_analytics failed (${error.code})`);
+      const a = connectionAnalyticsSchema.parse(data);
+      return json({
+        ...a,
+        timezone: event.timezone,
+        connectedShare: a.checkedIn ? Math.min(1, round4(a.connectedPeople / a.checkedIn)) : 0, // a voided door scan can leave someone connected but not checked in
+        buckets: a.buckets.map((b) => {
+          const bucketUtc = new Date(b.bucketUtc).toISOString();
+          return { bucketUtc, label: bucketLabel(bucketUtc, event.timezone), count: b.count };
+        }),
+      });
+    },
+
     // F17 step 6 (proposed): the connection leaderboard for the projector: rank, "First L." and points, top 10.
     async getLeaderboard(request: Request, params: Params) {
       const g = await guard(request, params);
@@ -930,6 +988,20 @@ export function createAdminApi(deps: AdminDeps) {
               s.scanned_at, local(s.scanned_at), s.checkpoints.name, s.checkpoints.kind, s.participants.first_name,
               s.participants.last_name, s.participants.is_test, s.method, names.get(s.scanned_by) ?? '', s.voided_at, s.void_reason,
             ]),
+          ),
+        );
+      }
+
+      // Proposed §11: who attended which workshop. No emails, like scans.csv; the §13 exclusions apply.
+      if (kind === 'workshops.csv') {
+        const { data, error } = await db.rpc('workshop_attendance', { p_event_id: g.eventId });
+        if (error) throw new Error(`workshop_attendance failed (${error.code})`);
+        return csvResponse(
+          slug,
+          kind,
+          toCsv(
+            ['workshop', 'first_name', 'last_name', 'scanned_at_utc', 'scanned_at_local', 'method'],
+            workshopAttendanceSchema.parse(data).map((r) => [r.workshop, r.firstName, r.lastName, new Date(r.scannedAt).toISOString(), local(r.scannedAt), r.method]),
           ),
         );
       }
