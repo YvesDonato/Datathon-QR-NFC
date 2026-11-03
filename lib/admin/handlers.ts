@@ -117,6 +117,7 @@ const walkInBody = z
 
 const rsvpBody = z.object({ ids: z.array(z.uuid()).min(1).max(1000) }).strict();
 const inviteBody = z.object({ email: z.string().transform(normalizeEmail).pipe(z.email()), role: z.enum(['organizer', 'volunteer']) }).strict();
+const TRACK_IDS = z.array(z.uuid()).max(100); // v0.11.50: a team's tracks
 
 type CheckpointRow = Database['public']['Tables']['checkpoints']['Row'];
 const checkpointView = (c: CheckpointRow) => ({
@@ -176,6 +177,13 @@ export function createAdminApi(deps: AdminDeps) {
       .from('audit_log')
       .insert({ event_id: eventId, actor_user_id: actor, actor_kind: 'staff', action, subject_id: subjectId, detail });
     if (error) throw new Error(`audit_log insert failed (${error.code})`);
+  }
+
+  // v0.11.50: replaces a team's tracks: SAVED, BAD_TRACK (another event's track) or NOT_FOUND (another event's team).
+  async function setTeamTracks(eventId: string, teamId: string, trackIds: string[]) {
+    const { data, error } = await db.rpc('set_team_tracks', { p_event_id: eventId, p_team_id: teamId, p_track_ids: trackIds });
+    if (error) throw new Error(`set_team_tracks failed (${error.code})`);
+    return data;
   }
 
   async function loadEvent(eventId: string) {
@@ -675,7 +683,7 @@ export function createAdminApi(deps: AdminDeps) {
       const [event, tracks, teams, unassigned] = await Promise.all([
         loadEvent(g.eventId),
         db.from('tracks').select('id, name').eq('event_id', g.eventId).order('created_at'),
-        db.from('teams').select('id, name, join_code, track_id, participants(id, first_name, last_name, status)').eq('event_id', g.eventId).order('created_at'),
+        db.from('teams').select('id, name, join_code, team_tracks(track_id), participants(id, first_name, last_name, status)').eq('event_id', g.eventId).order('created_at'),
         db
           .from('participants')
           .select('id, first_name, last_name, looking_for_team')
@@ -695,7 +703,7 @@ export function createAdminApi(deps: AdminDeps) {
           id: t.id,
           name: t.name,
           code: t.join_code,
-          trackId: t.track_id,
+          trackIds: t.team_tracks.map((x) => x.track_id),
           members: t.participants.map((p) => ({ id: p.id, displayName: name(p), status: p.status })),
         })),
         unassigned: (unassigned.data ?? []).map((p) => ({ id: p.id, displayName: name(p), looking: p.looking_for_team })),
@@ -738,7 +746,7 @@ export function createAdminApi(deps: AdminDeps) {
       return json({ track: data });
     },
 
-    // DELETE /api/admin/[slug]/tracks/[id]: teams that chose it are left without a track (FK set null)
+    // DELETE /api/admin/[slug]/tracks/[id]: teams that chose it keep their other tracks (team_tracks cascade)
     async deleteTrack(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
@@ -751,32 +759,37 @@ export function createAdminApi(deps: AdminDeps) {
       return json({ deleted: true });
     },
 
-    // POST /api/admin/[slug]/teams  { name, trackId? }
+    // POST /api/admin/[slug]/teams  { name, trackIds? }  (v0.11.50: any number of tracks)
     async createTeam(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
-      const body = z.object({ name: z.string().max(200), trackId: z.uuid().nullable().optional() }).strict().safeParse(await readJson(request));
+      const body = z.object({ name: z.string().max(200), trackIds: TRACK_IDS.optional() }).strict().safeParse(await readJson(request));
       const name = body.success ? parseTeamName(body.data.name) : null;
       if (!body.success || !name) return badRequest();
       const { data, error } = await db
         .from('teams')
-        .insert({ event_id: g.eventId, name, join_code: generateJoinCode(), track_id: body.data.trackId ?? null })
-        .select('id, name, join_code, track_id')
+        .insert({ event_id: g.eventId, name, join_code: generateJoinCode() })
+        .select('id, name, join_code')
         .single();
       if (error?.code === '23505') return json({ error: 'NAME_TAKEN', message: 'Another team already has that name.' }, 409);
-      if (error?.code === '23503') return notFound(); // another event's track
       if (error) throw new Error(`team insert failed (${error.code})`);
+      if ((await setTeamTracks(g.eventId, data.id, body.data.trackIds ?? [])) !== 'SAVED') {
+        // Another event's track: no team, as when the single track's foreign key refused it.
+        const { error: undo } = await db.from('teams').delete().eq('id', data.id);
+        if (undo) throw new Error(`team undo failed (${undo.code})`);
+        return notFound();
+      }
       await audit(g.eventId, g.userId, 'team.create', data.id);
-      return json({ team: { id: data.id, name: data.name, code: data.join_code, trackId: data.track_id } }, 201);
+      return json({ team: { id: data.id, name: data.name, code: data.join_code, trackIds: [...new Set(body.data.trackIds ?? [])] } }, 201);
     },
 
-    // PATCH /api/admin/[slug]/teams/[id]  { name?, trackId? }
+    // PATCH /api/admin/[slug]/teams/[id]  { name?, trackIds? }  (trackIds replaces the team's tracks)
     async updateTeam(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
       const id = uuid(params.id);
       const body = z
-        .object({ name: z.string().max(200).optional(), trackId: z.uuid().nullable().optional() })
+        .object({ name: z.string().max(200).optional(), trackIds: TRACK_IDS.optional() })
         .strict()
         .refine((b) => Object.keys(b).length > 0)
         .safeParse(await readJson(request));
@@ -784,19 +797,18 @@ export function createAdminApi(deps: AdminDeps) {
       if (!body.success) return badRequest();
       const name = body.data.name === undefined ? undefined : parseTeamName(body.data.name);
       if (name === null) return badRequest();
-      const { data, error } = await db
-        .from('teams')
-        .update({ ...(name !== undefined && { name }), ...(body.data.trackId !== undefined && { track_id: body.data.trackId }) })
-        .eq('id', id)
-        .eq('event_id', g.eventId)
-        .select('id, name, join_code, track_id')
-        .maybeSingle();
-      if (error?.code === '23505') return json({ error: 'NAME_TAKEN', message: 'Another team already has that name.' }, 409);
-      if (error?.code === '23503') return notFound();
-      if (error) throw new Error(`team update failed (${error.code})`);
+      if (name !== undefined) {
+        const { data, error } = await db.from('teams').update({ name }).eq('id', id).eq('event_id', g.eventId).select('id').maybeSingle();
+        if (error?.code === '23505') return json({ error: 'NAME_TAKEN', message: 'Another team already has that name.' }, 409);
+        if (error) throw new Error(`team update failed (${error.code})`);
+        if (!data) return notFound();
+      }
+      if (body.data.trackIds !== undefined && (await setTeamTracks(g.eventId, id, body.data.trackIds)) !== 'SAVED') return notFound();
+      const { data, error } = await db.from('teams').select('id, name, join_code, team_tracks(track_id)').eq('id', id).eq('event_id', g.eventId).maybeSingle();
+      if (error) throw new Error(`team load failed (${error.code})`);
       if (!data) return notFound();
       await audit(g.eventId, g.userId, 'team.update', id);
-      return json({ team: { id: data.id, name: data.name, code: data.join_code, trackId: data.track_id } });
+      return json({ team: { id: data.id, name: data.name, code: data.join_code, trackIds: data.team_tracks.map((t) => t.track_id) } });
     },
 
     // DELETE /api/admin/[slug]/teams/[id]: its members are moved out (FK set null)

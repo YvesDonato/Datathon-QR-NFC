@@ -3,7 +3,7 @@ import { generateJoinCode } from '@/lib/domain/team';
 import { generateToken } from '@/lib/domain/token';
 import { hackerDirectory } from '@/lib/me/hackers';
 import { myEvent } from '@/lib/me/profile';
-import { createTeam, inviteTeammate, joinTeam, leaveTeam, myTeam, removeTeammate, saveLooking, setLooking, setTeamTrack, setTrackInterests } from '@/lib/me/team';
+import { createTeam, inviteTeammate, joinTeam, leaveTeam, myTeam, removeTeammate, saveLooking, setLooking, setTeamTracks, setTrackInterests } from '@/lib/me/team';
 import { serviceClient } from '../fixtures/mail';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
@@ -61,13 +61,13 @@ describe('hacker teams (SPEC F15, v0.7)', () => {
     // Tracks: only once released, only this event's, only for a member; still possible after forming closes.
     const ai = await track(f.e1.id, 'Best AI/ML Project');
     const other = await track(f.e2.id, 'Elsewhere Track');
-    expect(await setTeamTrack(db(), a, f.p.A, ai)).toBe('NOT_RELEASED');
+    expect(await setTeamTracks(db(), a, f.p.A, [ai])).toBe('NOT_RELEASED');
     await f.pool.query('update events set tracks_released = true where id = $1', [f.e1.id]);
-    expect(await setTeamTrack(db(), a, f.p.A, other)).toBe('NOT_FOUND');
-    expect(await setTeamTrack(db(), n, f.p.N, ai)).toBe('NOT_FOUND'); // N has no team
+    expect(await setTeamTracks(db(), a, f.p.A, [other])).toBe('BAD_TRACK'); // v0.11.50: was NOT_FOUND
+    expect(await setTeamTracks(db(), n, f.p.N, [ai])).toBe('NOT_FOUND'); // N has no team
     await setOpen(f.e1.id, false);
-    expect(await setTeamTrack(db(), b, f.p.B, ai)).toBe('SAVED');
-    expect((await teamRow('Data Wizards'))?.track_id).toBe(ai);
+    expect(await setTeamTracks(db(), b, f.p.B, [ai])).toBe('SAVED');
+    expect((await f.pool.query('select track_id from team_tracks where team_id = $1', [(await teamRow('Data Wizards'))?.id])).rows).toEqual([{ track_id: ai }]);
     expect(await leaveTeam(db(), b, f.p.B)).toBe('CLOSED');
     await setOpen(f.e1.id, true);
 
@@ -304,6 +304,57 @@ describe('hacker teams (SPEC F15, v0.7)', () => {
       const [save, del] = await Promise.allSettled([setTrackInterests(db(), asV, viewer, [picked, kept]), f.pool.query('delete from tracks where id = $1', [picked])]);
       expect(del.status, `round ${round}`).toBe('fulfilled');
       expect(save.status === 'fulfilled' ? save.value : save.reason, `round ${round}`).toMatch(/^(SAVED|BAD_TRACK)$/);
+    }
+  });
+
+  it('T-TEAM-12 (v0.11.50): a team picks any number of tracks; none clears them; only tracks of this event; racing saves and track deletes never mix or error', async () => {
+    await f.pool.query('update events set tracks_released = true where id = $1', [f.e1.id]);
+    const [p, q] = await Promise.all([f.addParticipant(f.e1.id, { withPass: false }), f.addParticipant(f.e1.id, { withPass: false })]);
+    const { rows: [team] } = await f.pool.query<{ id: string }>(`insert into teams (event_id, name, join_code) values ($1, 'Many Tracks', $2) returning id`, [f.e1.id, generateJoinCode()]);
+    await f.pool.query('update participants set team_id = $1 where id = any($2)', [team!.id, [p.id, q.id]]);
+    const [asP, asQ] = [await as(p.id), await as(q.id)];
+    const [ai, hw, web] = [await track(f.e1.id, 'Multi AI'), await track(f.e1.id, 'Multi Hardware'), await track(f.e1.id, 'Multi Web')];
+    const elsewhere = await track(f.e2.id, 'Multi elsewhere');
+    const sorted = (ids: string[]) => [...ids].sort();
+    const picked = async () => sorted((await f.pool.query<{ track_id: string }>('select track_id from team_tracks where team_id = $1', [team!.id])).rows.map((r) => r.track_id));
+
+    expect(await setTeamTracks(db(), asP, p.id, [ai, hw, ai])).toBe('SAVED');
+    expect(await picked()).toEqual(sorted([ai, hw]));
+    // Any member replaces the whole set, and the Team page reads it back.
+    expect(await setTeamTracks(db(), asQ, q.id, [hw, web])).toBe('SAVED');
+    expect(await picked()).toEqual(sorted([hw, web]));
+    const me = await myEvent(db(), asP.email, new Date());
+    expect(sorted((await myTeam(db(), me!)).team!.trackIds)).toEqual(sorted([hw, web]));
+    // Another event's track, or not a track id: nothing changes.
+    expect(await setTeamTracks(db(), asP, p.id, [ai, elsewhere])).toBe('BAD_TRACK');
+    expect(await setTeamTracks(db(), asP, p.id, ['not-a-uuid'])).toBe('BAD_TRACK');
+    expect(await picked()).toEqual(sorted([hw, web]));
+    // None clears them.
+    expect(await setTeamTracks(db(), asP, p.id, [])).toBe('SAVED');
+    expect(await picked()).toEqual([]);
+    // The app before v0.11.50 (until it is redeployed) still saves one track: a list of one.
+    const old = (track: string) => f.pool.query<{ r: string }>('select team_set_track($1, $2, $3, $4) as r', [p.id, asP.email, f.staff.vol1, track]);
+    expect((await old(ai)).rows[0]?.r).toBe('SAVED');
+    expect(await picked()).toEqual([ai]);
+    expect((await old(elsewhere)).rows[0]?.r).toBe('NOT_FOUND');
+    expect(await picked()).toEqual([ai]);
+
+    // Two members saving at once: one set wins whole, never a mix of both.
+    const save = (who: { id: string }, email: string, ids: string[]) =>
+      f.pool.query<{ r: string }>('select team_set_tracks($1, $2, $3, $4) as r', [who.id, email, f.staff.vol1, ids]);
+    for (let round = 0; round < 30; round++) {
+      const [x, y] = await Promise.all([save(p, asP.email, [ai, hw]), save(q, asQ.email, [web])]);
+      expect([x.rows[0]?.r, y.rows[0]?.r], `round ${round}`).toEqual(['SAVED', 'SAVED']);
+      expect([sorted([ai, hw]), [web]], `round ${round}`).toContainEqual(await picked());
+    }
+    // An organizer deleting a picked track while a member saves: one waits for the other, never an error.
+    for (let round = 0; round < 30; round++) {
+      const gone = await track(f.e1.id, `Multi race ${round}`);
+      expect((await save(p, asP.email, [gone, ai])).rows[0]?.r).toBe('SAVED');
+      const [saved, del] = await Promise.all([save(q, asQ.email, [gone, hw]), f.pool.query('delete from tracks where id = $1', [gone])]);
+      expect(del.rowCount, `round ${round}`).toBe(1);
+      expect(saved.rows[0]?.r, `round ${round}`).toMatch(/^(SAVED|BAD_TRACK)$/);
+      expect(await picked(), `round ${round}`).toEqual(saved.rows[0]?.r === 'SAVED' ? [hw] : [ai]);
     }
   });
 });

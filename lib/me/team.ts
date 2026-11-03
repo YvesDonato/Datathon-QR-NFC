@@ -56,10 +56,12 @@ export async function removeTeammate(db: Db, user: Account, participantId: strin
   return code('team_remove', await db.rpc('team_remove', { ...me, p_member_id: memberId, p_code: generateJoinCode() }));
 }
 
-export async function setTeamTrack(db: Db, user: Account, participantId: string, trackId: string): Promise<TeamCode> {
+// v0.11.50 (owner's request): a team's tracks are a list, any number of them; none clears it.
+export async function setTeamTracks(db: Db, user: Account, participantId: string, trackIds: string[]): Promise<TeamCode> {
   const me = own(user, participantId);
-  if (!me || !z.uuid().safeParse(trackId).success) return 'NOT_FOUND';
-  return code('team_set_track', await db.rpc('team_set_track', { ...me, p_track_id: trackId }));
+  if (!me) return 'NOT_FOUND';
+  if (!trackIds.every((id) => z.uuid().safeParse(id).success)) return 'BAD_TRACK';
+  return code('team_set_tracks', await db.rpc('team_set_tracks', { ...me, p_track_ids: [...new Set(trackIds)] }));
 }
 
 export async function inviteTeammate(db: Db, user: Account, participantId: string, inviteeId: string): Promise<TeamCode> {
@@ -117,7 +119,7 @@ export interface MyTeam {
   tracks: Array<{ id: string; name: string }>;
   /** v0.11.25: the tracks this hacker wants to do. */
   myTrackIds: string[];
-  team: { name: string; code: string; trackId: string | null; members: Array<{ id: string; name: string }> } | null;
+  team: { name: string; code: string; trackIds: string[]; members: Array<{ id: string; name: string }> } | null;
 }
 
 export interface TrackWithTeams {
@@ -131,7 +133,7 @@ export async function tracksWithTeams(db: Db, me: MyEvent): Promise<TrackWithTea
   if (!me.event.tracksReleased) return null;
   const [tracks, teams] = await Promise.all([
     db.from('tracks').select('id, name').eq('event_id', me.eventId).order('name'),
-    db.from('teams').select('id, name, track_id, participants(count)').eq('event_id', me.eventId)
+    db.from('teams').select('id, name, team_tracks(track_id), participants(count)').eq('event_id', me.eventId)
       .eq('participants.event_id', me.eventId).is('participants.deleted_at', null).order('name'),
   ]);
   if (tracks.error) throw new Error(`tracks load failed (${tracks.error.code})`);
@@ -140,8 +142,9 @@ export async function tracksWithTeams(db: Db, me: MyEvent): Promise<TrackWithTea
   const unassigned: TrackWithTeams = { id: null, name: 'No track yet', teams: [] };
   const byTrack = new Map(groups.map((t) => [t.id, t]));
   for (const team of teams.data) {
-    const group = team.track_id === null ? unassigned : byTrack.get(team.track_id);
-    group?.teams.push({ id: team.id, name: team.name, memberCount: team.participants[0]?.count ?? 0 });
+    // v0.11.50: a team is on every track it picked.
+    const groups = team.team_tracks.length === 0 ? [unassigned] : team.team_tracks.map((t) => byTrack.get(t.track_id));
+    for (const group of groups) group?.teams.push({ id: team.id, name: team.name, memberCount: team.participants[0]?.count ?? 0 });
   }
   if (unassigned.teams.length > 0) groups.push(unassigned);
   return groups;
@@ -152,7 +155,7 @@ export async function myTeam(db: Db, me: MyEvent): Promise<MyTeam> {
   const [tracks, team, invites, mine] = await Promise.all([
     db.from('tracks').select('id, name').eq('event_id', me.eventId).order('created_at'),
     me.teamId
-      ? db.from('teams').select('name, join_code, track_id, participants(id, first_name, last_name)').eq('id', me.teamId).eq('event_id', me.eventId).maybeSingle()
+      ? db.from('teams').select('name, join_code, team_tracks(track_id), participants(id, first_name, last_name)').eq('id', me.teamId).eq('event_id', me.eventId).maybeSingle()
       : null,
     db.from('team_invites').select('team_id, teams!inner(name), participants!team_invites_invited_by_fkey(first_name)')
       .eq('participant_id', me.participantId).eq('event_id', me.eventId).order('created_at', { ascending: false }),
@@ -169,7 +172,7 @@ export async function myTeam(db: Db, me: MyEvent): Promise<MyTeam> {
     myTrackIds: mine.data.map((t) => t.track_id),
     invites: invites.data.map((i) => ({ teamId: i.team_id, teamName: i.teams.name, from: i.participants?.first_name ?? 'A teammate' })),
     team: t
-      ? { name: t.name, code: t.join_code, trackId: t.track_id, members: t.participants.map((m) => ({ id: m.id, name: `${m.first_name} ${m.last_name}`.trim() })).toSorted((x, y) => x.name.localeCompare(y.name)) }
+      ? { name: t.name, code: t.join_code, trackIds: t.team_tracks.map((x) => x.track_id), members: t.participants.map((m) => ({ id: m.id, name: `${m.first_name} ${m.last_name}`.trim() })).toSorted((x, y) => x.name.localeCompare(y.name)) }
       : null,
   };
 }

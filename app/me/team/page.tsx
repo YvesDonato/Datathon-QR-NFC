@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { ConfirmSubmit } from '@/components/confirm-submit';
 import { ClearResult } from '@/components/clear-result';
-import { NativeSelect } from '@/components/ui/native-select';
 import { Input } from '@/components/ui/input';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -16,7 +15,7 @@ import { currentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db/server';
 import { formatJoinCode } from '@/lib/domain/team';
 import { myEvent, type MyEvent } from '@/lib/me/profile';
-import { createTeam, declineInvite, joinTeam, leaveTeam, myTeam, removeTeammate, saveLooking, tracksWithTeams, setTeamTrack, type TeamCode } from '@/lib/me/team';
+import { createTeam, declineInvite, joinTeam, leaveTeam, myTeam, removeTeammate, saveLooking, tracksWithTeams, setTeamTracks, type TeamCode } from '@/lib/me/team';
 import { TracksChart } from './tracks-chart';
 import { loadMyEvent, menuMetadata } from '../load';
 import { CopyCode } from './copy-code';
@@ -32,7 +31,7 @@ const NOTICES: Record<Notice, string> = {
   JOINED: '✓ You joined the team.',
   LEFT: '✓ You left the team.',
   REMOVED: '✓ They’re off the team. Your team has a new join code: share it with anyone still joining.',
-  SAVED: '✓ Track saved.',
+  SAVED: '✓ Tracks saved.',
   LOOKING_SAVED: '✓ Saved.',
   INVITE_GONE: '✕ That invite is no longer open.',
   RATE_LIMITED: '✕ Your team has sent a lot of invites. Try again in an hour.',
@@ -73,7 +72,7 @@ async function act(formData: FormData) {
           ? await leaveTeam(db(), user, m.participantId)
           : op === 'remove'
             ? await removeTeammate(db(), user, m.participantId, field('memberId'))
-            : await setTeamTrack(db(), user, m.participantId, field('trackId'));
+            : await setTeamTracks(db(), user, m.participantId, formData.getAll('teamTrack').map(String));
   const notice: Notice = op === 'looking' && r === 'SAVED' ? 'LOOKING_SAVED' : op === 'accept' && r === 'BAD_CODE' ? 'INVITE_GONE' : r;
   // A refused join code comes back to its field (a join code isn't a secret, F15), so it can be fixed instead of retyped.
   const back = op === 'join' && r !== 'JOINED' ? `&code=${encodeURIComponent(field('code').slice(0, 20))}` : '';
@@ -127,7 +126,7 @@ async function MyTeamContent({ me: m, now, r, typedCode }: { me: MyEvent; now: D
   // A refused join shows its error next to the code field, not up here.
   const joinError = typedCode !== undefined && !team && open && message?.startsWith('✕') ? message : null;
   const notice = joinError ? null : message;
-  const trackName = tracks.find((t) => t.id === team?.trackId)?.name;
+  const trackNames = tracks.filter((t) => team?.trackIds.includes(t.id)).map((t) => t.name);
 
   return (
     <>
@@ -247,9 +246,9 @@ async function MyTeamContent({ me: m, now, r, typedCode }: { me: MyEvent; now: D
             <CopyCode text={formatJoinCode(team.code)} />
           </div>
           <div className="pt-[16px] [border-top-width:1px] [border-top-style:solid] [border-top-color:var(--line)]">
-            <h3>Track</h3>
+            <h3>Interested tracks</h3>
             {!m.event.tracksReleased ? (
-              <p className="copy">{tracks.length > 0 ? 'Your team picks its track once organizers open track picks.' : 'Tracks are announced at the hackathon.'}</p>
+              <p className="copy">{tracks.length > 0 ? 'Your team picks its tracks once organizers open track picks.' : 'Tracks are announced at the hackathon.'}</p>
             ) : live && tracks.length > 0 ? (
               <form action={act} className="grid gap-[16px] [&_label_+_:is(input,_select,_textarea)]:mt-[-10px] [&_label]:text-[14px]
 
@@ -259,21 +258,20 @@ async function MyTeamContent({ me: m, now, r, typedCode }: { me: MyEvent; now: D
 
           [&_h2:first-of-type]:mt-0 [&_h2:first-of-type]:pt-0 [&_h2:first-of-type]:[border-top:0px]">
                 <input type="hidden" name="op" value="track" />
-                <Label htmlFor="trackId">Your team’s track</Label>
-                <NativeSelect id="trackId" name="trackId" defaultValue={team.trackId ?? ''} required className="min-h-12 w-full">
-                  <option value="" disabled>
-                    Pick a track
-                  </option>
+                {/* v0.11.50 (owner's request): any number of tracks, ticked like the tracks a hacker wants to do. */}
+                <fieldset className="grid gap-[2px] m-0 p-0 border-0 min-w-0 [&_legend]:p-0 [&_legend]:mb-[4px] [&_legend]:text-[14px] [&_legend]:font-medium">
+                  <legend className="sr-only">Interested tracks</legend>
                   {tracks.map((t) => (
-                    <option key={t.id} value={t.id}>
+                    <Label key={t.id} className="flex min-h-11 items-center gap-3 font-normal">
+                      <input type="checkbox" name="teamTrack" value={t.id} defaultChecked={team.trackIds.includes(t.id)} className="size-[22px] shrink-0" />
                       {t.name}
-                    </option>
+                    </Label>
                   ))}
-                </NativeSelect>
-                <Button type="submit">Save track</Button>
+                </fieldset>
+                <Button type="submit">Save tracks</Button>
               </form>
             ) : (
-              <p>{trackName ?? 'No track chosen.'}</p>
+              <p>{trackNames.length > 0 ? trackNames.join(', ') : 'No tracks chosen.'}</p>
             )}
           </div>
           {open && (

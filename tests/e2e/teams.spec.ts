@@ -31,14 +31,18 @@ test('T-TEAM-09: below My team, a chart of teams per track appears once tracks a
     return rows[0]!.id;
   };
   const ai = await track(f.e1.id, 'Best AI');
-  await track(f.e1.id, 'Best Hardware');
+  const hw = await track(f.e1.id, 'Best Hardware');
+  await track(f.e1.id, 'Best Design');
   const other = await track(f.e2.id, 'Other event track');
   const { rows } = await f.pool.query<{ id: string }>(
-    `insert into teams (event_id, name, join_code, track_id) values
-      ($1, 'Data Wizards', 'DDDDDDDD', $2), ($1, 'Zebras', 'ZZZZZZZZ', $2),
-      ($1, 'Undecided', 'UUUUUUUU', null), ($3, 'Other event team', 'PPPPPPPP', $4) returning id`,
-    [f.e1.id, ai, f.e2.id, other],
+    `insert into teams (event_id, name, join_code) values
+      ($1, 'Data Wizards', 'DDDDDDDD'), ($1, 'Zebras', 'ZZZZZZZZ'),
+      ($1, 'Undecided', 'UUUUUUUU'), ($2, 'Other event team', 'PPPPPPPP') returning id`,
+    [f.e1.id, f.e2.id],
   );
+  // v0.11.50: Data Wizards picked two tracks, Zebras one, Undecided none.
+  await f.pool.query(`insert into team_tracks (team_id, track_id, event_id) values ($1, $4, $7), ($1, $5, $7), ($2, $4, $7), ($3, $6, $8)`,
+    [rows[0]!.id, rows[1]!.id, rows[3]!.id, ai, hw, other, f.e1.id, f.e2.id]);
   await f.pool.query('update participants set team_id = $1 where id = any($2)', [rows[0]!.id, [f.p.A, f.p.B]]);
   const a = await hacker(browser, f.p.A);
   // Use the signed-in cookies in a script-free context: the chart must read without JavaScript.
@@ -58,14 +62,16 @@ test('T-TEAM-09: below My team, a chart of teams per track appears once tracks a
     await expect(aiCard.getByRole('button')).toHaveCount(2);
     await expect(aiCard.getByRole('button', { name: 'Data Wizards · 2 members (your team)', exact: true })).toBeVisible();
     await expect(aiCard.getByRole('button', { name: 'Zebras · 0 members', exact: true })).toBeVisible();
-    await expect(chart.getByRole('group', { name: 'Best Hardware: No teams yet' })).toContainText('No teams yet');
+    // A team with two tracks is on both bars.
+    await expect(chart.getByRole('group', { name: 'Best Hardware: 1 team' }).getByRole('button', { name: 'Data Wizards · 2 members (your team)', exact: true })).toBeVisible();
+    await expect(chart.getByRole('group', { name: 'Best Design: No teams yet' })).toContainText('No teams yet');
     await expect(chart.getByRole('group', { name: 'No track yet: 1 team' }).getByRole('button', { name: 'Undecided · 0 members' })).toBeVisible();
     await expect(chart).not.toContainText(/hacker/i);
     await expect(chart.getByText(/Other event track|Other event team|Ada Fixture|Ben Fixture|DDDD-DDDD/)).toHaveCount(0);
     await expect(page.getByText(/Other event track|Other event team/)).toHaveCount(0);
     // With JavaScript, tapping a block shows its team.
     await a.page.goto('/me/team');
-    await a.page.getByRole('button', { name: 'Data Wizards · 2 members (your team)' }).click();
+    await a.page.getByRole('group', { name: 'Best AI: 2 teams' }).getByRole('button', { name: 'Data Wizards · 2 members (your team)' }).click();
     const tip = a.page.getByRole('tooltip');
     await expect(tip).toContainText('Data Wizards');
     await expect(tip).toContainText('2 members · Best AI');
@@ -78,7 +84,7 @@ test('T-TEAM-09: below My team, a chart of teams per track appears once tracks a
   }
 });
 
-test('T-TEAM-07: tracks and forming from the admin page; A creates a team, B joins with its code, A picks the released track', async ({ page, browser }) => {
+test('T-TEAM-07: tracks and forming from the admin page; A creates a team, B joins with its code, A picks released tracks', async ({ page, browser }) => {
   await signIn(page, f.staffEmail.org1, `/admin/${f.slug}/teams`);
   // v0.11.32: organizers add tracks from the page again, one at a time: type, Enter, the next one.
   const addTrack = page.getByLabel('Add a track');
@@ -109,7 +115,7 @@ test('T-TEAM-07: tracks and forming from the admin page; A creates a team, B joi
   await expect(a.page.getByText('✓ Team created.')).toBeVisible();
   const code = (await a.page.getByText(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/).innerText()).replace('-', '');
   // Tracks exist but aren't released: the team learns when it can pick one.
-  await expect(a.page.getByText('Your team picks its track once organizers open track picks.')).toBeVisible();
+  await expect(a.page.getByText('Your team picks its tracks once organizers open track picks.')).toBeVisible();
   await expect(a.page.getByText('Ada Fixture (you)')).toBeVisible();
   await a.page.getByRole('button', { name: 'Copy join code' }).click();
   await expect(a.page.getByRole('status').filter({ hasText: 'Join code copied.' })).toBeAttached();
@@ -134,18 +140,30 @@ test('T-TEAM-07: tracks and forming from the admin page; A creates a team, B joi
   await page.getByLabel('Tracks released').check();
   await expect(page.getByText('✓ Tracks released.')).toBeVisible();
   await a.page.reload();
-  await a.page.getByLabel('Your team’s track').selectOption({ label: 'Best Hardware Project' });
-  await a.page.getByRole('button', { name: 'Save track' }).click();
-  await expect(a.page.getByText('✓ Track saved.')).toBeVisible();
+  // v0.11.50: any number of tracks, ticked under Interested tracks.
+  const picks = a.page.getByRole('group', { name: 'Interested tracks' });
+  await picks.getByLabel('Best AI/ML Project').check();
+  await picks.getByLabel('Best Hardware Project').check();
+  await a.page.getByRole('button', { name: 'Save tracks' }).click();
+  await expect(a.page.getByText('✓ Tracks saved.')).toBeVisible();
+  await expect(picks.getByLabel('Best AI/ML Project')).toBeChecked();
+  await expect(picks.getByLabel('Best Hardware Project')).toBeChecked();
 
-  // The organizer sees the team, both members and the track.
+  // The organizer sees the team, both members and both tracks, and can untick one.
   await page.reload();
   const team = page.getByRole('region', { name: 'Team Data Wizards' });
+  await expect(team.locator('summary')).toContainText('Best AI/ML Project, Best Hardware Project');
   await team.locator('summary').click();
   await expect(team.getByText('Ada Fixture')).toBeVisible();
   await expect(team.getByText('Ben Fixture')).toBeVisible();
-  await expect(team.getByLabel('Track of Data Wizards')).toHaveValue(/.+/);
-  await expect(team.getByLabel('Track of Data Wizards').locator('option:checked')).toHaveText('Best Hardware Project');
+  const teamTracks = team.getByRole('group', { name: 'Tracks of Data Wizards' });
+  await expect(teamTracks.getByLabel('Best AI/ML Project')).toBeChecked();
+  await expect(teamTracks.getByLabel('Best Hardware Project')).toBeChecked();
+  await teamTracks.getByLabel('Best AI/ML Project').uncheck();
+  await expect(page.getByText('✓ Tracks saved.')).toBeVisible();
+  await b.page.reload();
+  await expect(b.page.getByRole('group', { name: 'Interested tracks' }).getByLabel('Best AI/ML Project')).not.toBeChecked();
+  await expect(b.page.getByRole('group', { name: 'Interested tracks' }).getByLabel('Best Hardware Project')).toBeChecked();
   await a.context.close();
   await b.context.close();
 });
@@ -337,7 +355,8 @@ test('T-TEAM-11 (v0.11.47): crafted result links load; a result shows once; an i
 
 test('T-TEAM-09 (v0.11.47): on a phone, a track with 20 teams stays inside the chart', async ({ browser }) => {
   const { rows: [crowded] } = await f.pool.query<{ id: string }>(`insert into tracks (event_id, name) values ($1, 'Crowded') returning id`, [f.e1.id]);
-  await f.pool.query(`insert into teams (event_id, name, join_code, track_id) select $1, 'Crowd ' || g, ($3::text[])[g], $2 from generate_series(1, 20) g`,
+  await f.pool.query(`with crowd as (insert into teams (event_id, name, join_code) select $1, 'Crowd ' || g, ($3::text[])[g] from generate_series(1, 20) g returning id)
+    insert into team_tracks (team_id, track_id, event_id) select id, $2, $1 from crowd`,
     [f.e1.id, crowded!.id, Array.from({ length: 20 }, () => generateJoinCode())]);
   await f.pool.query('update events set tracks_released = true where id = $1', [f.e1.id]);
   const a = await hacker(browser, f.p.A);

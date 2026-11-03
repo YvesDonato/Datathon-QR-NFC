@@ -425,6 +425,32 @@ isOneToOne: false
       referencedColumns: ["id","event_id"]
     }
                   ]
+                },"team_tracks": {
+                  Row: {
+                    "created_at": string,"event_id": string,"team_id": string,"track_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"event_id": string,"team_id": string,"track_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"event_id"?: string,"team_id"?: string,"track_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "team_tracks_team_id_event_id_fkey"
+      columns: ["team_id","event_id"]
+isOneToOne: false
+      referencedRelation: "teams"
+      referencedColumns: ["id","event_id"]
+    },{
+      foreignKeyName: "team_tracks_track_id_event_id_fkey"
+      columns: ["track_id","event_id"]
+isOneToOne: false
+      referencedRelation: "tracks"
+      referencedColumns: ["id","event_id"]
+    }
+                  ]
                 },"teams": {
                   Row: {
                     "created_at": string,"event_id": string,"id": string,"join_code": string,"name": string,"track_id": string | null
@@ -642,6 +668,9 @@ isOneToOne: false
 "set_rsvp_token":
 { Args: { "p_outbox_id": string,"p_token_hash": string }; Returns: Json
                            },
+"set_team_tracks":
+{ Args: { "p_event_id": string,"p_team_id": string,"p_track_ids": (string)[] }; Returns: string
+                           },
 "set_track_interests":
 { Args: { "p_email": string,"p_participant_id": string,"p_track_ids": (string)[],"p_user_id": string }; Returns: string
                            },
@@ -665,6 +694,9 @@ isOneToOne: false
                            },
 "team_set_track":
 { Args: { "p_email": string,"p_participant_id": string,"p_track_id": string,"p_user_id": string }; Returns: string
+                           },
+"team_set_tracks":
+{ Args: { "p_email": string,"p_participant_id": string,"p_track_ids": (string)[],"p_user_id": string }; Returns: string
                            },
 "unlink_badge":
 { Args: { "p_actor": string,"p_event_id": string,"p_participant_id": string }; Returns: string
