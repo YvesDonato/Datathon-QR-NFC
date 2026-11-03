@@ -7,9 +7,9 @@ import { scanApi } from '../fixtures/scan-api';
 import { signInAs } from '../fixtures/staff';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
-// SPEC §8 step 11b (proposed): a workshop (session checkpoint) scan within the event's cooldown of the person's
+// SPEC §8 step 11b (v0.12): a workshop (session checkpoint) scan within the event's cooldown of the person's
 // last live workshop scan elsewhere is refused with SESSION_COOLDOWN. ALREADY_SCANNED (step 10) still wins.
-// The hacker's Workshops page lists their live workshop scans (proposed F14 step 8).
+// The hacker's Workshops page lists their live workshop scans (F14 step 8).
 let f: StandardFixture;
 const db = serviceClient();
 const ITERATIONS = Math.max(30, Number(process.env.CONC_ITERATIONS ?? 0));
@@ -121,7 +121,7 @@ describe('workshop cooldown (SPEC §8 step 11b)', () => {
   });
 });
 
-describe('my_workshops() (proposed F14 step 8)', () => {
+describe('my_workshops() (F14 step 8)', () => {
   it('T-WS-01: live workshop scans only, newest first, with the cooldown end while it runs', async () => {
     const [w1, w2, a] = [await workshop('Intro to Pandas'), await workshop('Pitching 101'), await hacker()];
     expect(await myWorkshops(db, a)).toEqual({ cooldownMinutes: 5, availableAt: null, serverTime: expect.any(String), workshops: [] });

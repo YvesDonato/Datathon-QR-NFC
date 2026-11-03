@@ -4,7 +4,7 @@ import { adminClient, obj } from '../fixtures/admin-api';
 import { signInAs } from '../fixtures/staff';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
-// Proposed §13 additions: the organizer's Workshops tab and the Leaderboard tab's totals. Counts only; the same
+// SPEC §13 (v0.12): the organizer's Workshops tab and the Leaderboard tab's totals. Counts only; the same
 // exclusions as every §13 metric (voided, is_test, deleted).
 let f: StandardFixture;
 let org: string;
@@ -33,7 +33,7 @@ const attend = async (cp: string, participantId: string, minutesAgo: number) => 
   return r.scanId ?? '';
 };
 
-describe('organizer analytics (proposed §13)', () => {
+describe('organizer analytics (§13)', () => {
   it('T-ANA-07: workshops: attendees per workshop, how many each checked-in hacker attended, refusals, 15-minute buckets', async () => {
     const pandas = await workshop(`Pandas ${randomUUID().slice(0, 4)}`, 4);
     const pitch = await workshop(`Pitch ${randomUUID().slice(0, 4)}`);

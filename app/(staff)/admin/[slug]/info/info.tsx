@@ -16,7 +16,7 @@ interface EventInfo {
   /** v0.11.28: the date shown to invitees, which can be earlier than the deadline. */
   rsvpReplyBy: string | null;
   timezone: string;
-  /** Proposed §8 step 11b: minutes between check-ins to different workshops (0: off). */
+  /** SPEC §8 step 11b: minutes between check-ins to different workshops (0: off). */
   sessionCooldownMinutes: number;
 }
 

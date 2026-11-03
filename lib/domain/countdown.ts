@@ -1,4 +1,4 @@
-// Workshop cooldown timers (proposed §8 step 11b). Pure: the caller passes both instants.
+// Workshop cooldown timers (§8 step 11b). Pure: the caller passes both instants.
 
 /** Milliseconds from `now` until `until` (ISO), never negative; 0 for an unparseable time. */
 export function remainingMs(until: string, now: string | number): number {

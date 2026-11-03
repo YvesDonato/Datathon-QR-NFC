@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { chooseCheckpoint, E2E_ORIGIN, fakeCameraArgs, signIn } from '../fixtures/e2e';
 import { createAccount, createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
-// Proposed F14 step 8 and §8 step 11b: a hacker's Workshops page lists the workshops their badge was tapped at, with
+// SPEC F14 step 8 and §8 step 11b: a hacker's Workshops page lists the workshops their badge was tapped at, with
 // the cooldown; the scanner refuses a second workshop inside it. No stubs: both go through the real API and database.
 let f: StandardFixture;
 let pandas = '';

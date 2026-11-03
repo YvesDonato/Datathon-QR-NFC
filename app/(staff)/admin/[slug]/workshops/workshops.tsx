@@ -28,7 +28,7 @@ const BUCKETS = ['No workshops', '1 workshop', '2 workshops', '3 or more'] as co
 const wrap = `tw-admin-tableWrap overflow-x-auto [background:var(--card)] [border-width:1px] [border-style:solid]
   [border-color:var(--line)] rounded-card shadow-panel max-[600.001px]:max-w-full`;
 
-// Proposed §13: attendance per workshop (session checkpoints), how many workshops each checked-in hacker went to,
+// SPEC §13: attendance per workshop (session checkpoints), how many workshops each checked-in hacker went to,
 // taps the cooldown refused, and check-ins over time. People lists who attended each one; the CSV has them all.
 export function Workshops({ slug }: { slug: string }) {
   const api = useApi();

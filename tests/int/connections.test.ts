@@ -4,7 +4,7 @@ import { runRetention } from '@/lib/privacy/retention';
 import { serviceClient } from '../fixtures/mail';
 import { createStandardFixture, randomUid, type StandardFixture } from '../fixtures/standard';
 
-// SPEC F17 (proposed): the connection game. Tapping someone's badge and pressing Connect counts once both have
+// SPEC F17 (v0.12): the connection game. Tapping someone's badge and pressing Connect counts once both have
 // done it (mutual). Only signed-in, checked-in attendees of the badge's event can connect.
 let f: StandardFixture;
 const db = serviceClient();

@@ -71,7 +71,7 @@ export async function runRetention(db: Db, now: Date): Promise<RetentionReport> 
   const { data: events, error } = await db.from('events').select('id').lte('ends_at', cutoff);
   if (error) throw new Error(`retention events load failed (${error.code})`);
 
-  // F17 (proposed): who met whom goes 30 days after the event, like the other event-day personal data.
+  // F17 (v0.12): who met whom goes 30 days after the event, like the other event-day personal data.
   const { data: connections, error: connectionsError } = await db.rpc('retain_connections');
   if (connectionsError) throw new Error(`retain_connections failed (${connectionsError.code})`);
   const report: RetentionReport = { events: [], anonymised: [], connectionsDeleted: connections };

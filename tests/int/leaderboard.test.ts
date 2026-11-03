@@ -5,7 +5,7 @@ import { serviceClient } from '../fixtures/mail';
 import { signInAs } from '../fixtures/staff';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
-// SPEC F17 step 6 (proposed): the connection leaderboard. 1 point per mutual connection, derived from the taps as of
+// SPEC F17 step 6 (v0.12): the connection leaderboard. 1 point per mutual connection, derived from the taps as of
 // now or the freeze time (I-22); ties share a rank and whoever reached the score first is listed first.
 let f: StandardFixture;
 let org: string;

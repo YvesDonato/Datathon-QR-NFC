@@ -48,7 +48,7 @@ const siteLabel = (href: string) => {
   return `${url.host}${url.pathname}${url.search}`.replace(/\/$/, '');
 };
 
-// SPEC F17 (proposed): Connect is a POST from a button; the tapper is the signed-in account, never the badge.
+// SPEC F17 (v0.12): Connect is a POST from a button; the tapper is the signed-in account, never the badge.
 async function connectAction(formData: FormData) {
   'use server';
   const uid = normalizeUid(String(formData.get('uid') ?? ''));

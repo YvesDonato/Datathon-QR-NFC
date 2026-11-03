@@ -69,7 +69,7 @@ const metricsSchema = z.object({
   notFound: z.array(z.object({ staffUserId: z.string(), displayName: z.string().nullable(), count: z.number() })),
 });
 
-// Proposed §13 additions: workshop and connection analytics, counts only.
+// SPEC §13 (v0.12): workshop and connection analytics, counts only.
 const bucketsSchema = z.array(z.object({ bucketUtc: z.string(), count: z.number() }).strict());
 const workshopAnalyticsSchema = z.object({
   checkedIn: z.number(),
@@ -107,7 +107,7 @@ const eventUpdate = z
     rsvpDeadline: z.iso.datetime().refine((at) => Date.parse(at) > Date.now()).nullable().optional(),
     // v0.11.28: the date shown to invitees (and the reminder days); not after the deadline (a database check).
     rsvpReplyBy: z.iso.datetime().refine((at) => Date.parse(at) > Date.now()).nullable().optional(),
-    // Proposed §8 step 11b: minutes between check-ins to different workshops; 0 turns the cooldown off.
+    // SPEC §8 step 11b: minutes between check-ins to different workshops; 0 turns the cooldown off.
     sessionCooldownMinutes: z.number().int().min(0).max(120).optional(),
   })
   .strict()
@@ -604,7 +604,7 @@ export function createAdminApi(deps: AdminDeps) {
       return json({ code: data });
     },
 
-    // GET /api/admin/[slug]/analytics/workshops (proposed §13): attendance per workshop, how many workshops each
+    // GET /api/admin/[slug]/analytics/workshops (§13): attendance per workshop, how many workshops each
     // checked-in hacker attended (0, 1, 2, 3+), cooldown refusals and check-ins per 15 minutes.
     async getWorkshopAnalytics(request: Request, params: Params) {
       const g = await guard(request, params);
@@ -623,7 +623,7 @@ export function createAdminApi(deps: AdminDeps) {
       });
     },
 
-    // GET /api/admin/[slug]/analytics/connections (proposed §13, F17): totals only, never who met whom.
+    // GET /api/admin/[slug]/analytics/connections (§13, F17): totals only, never who met whom.
     async getConnectionAnalytics(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
@@ -641,7 +641,7 @@ export function createAdminApi(deps: AdminDeps) {
       });
     },
 
-    // F17 step 6 (proposed): the connection leaderboard for the projector: rank, "First L." and points, top 10.
+    // F17 step 6 (v0.12): the connection leaderboard for the projector: rank, "First L." and points, top 10.
     async getLeaderboard(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
@@ -992,7 +992,7 @@ export function createAdminApi(deps: AdminDeps) {
         );
       }
 
-      // Proposed §11: who attended which workshop. No emails, like scans.csv; the §13 exclusions apply.
+      // SPEC §11: who attended which workshop. No emails, like scans.csv; the §13 exclusions apply.
       if (kind === 'workshops.csv') {
         const { data, error } = await db.rpc('workshop_attendance', { p_event_id: g.eventId });
         if (error) throw new Error(`workshop_attendance failed (${error.code})`);

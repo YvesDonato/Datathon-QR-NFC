@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatCountdown, remainingMs } from '@/lib/domain/countdown';
 
-describe('workshop cooldown timer (proposed §8 step 11b)', () => {
+describe('workshop cooldown timer (§8 step 11b)', () => {
   it('T-WS-02: remainingMs and formatCountdown', () => {
     expect(remainingMs('2026-11-07T15:05:00Z', '2026-11-07T15:00:00Z')).toBe(300_000);
     expect(remainingMs('2026-11-07T15:00:00Z', '2026-11-07T15:05:00Z')).toBe(0);

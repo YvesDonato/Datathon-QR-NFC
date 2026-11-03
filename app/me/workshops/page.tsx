@@ -12,7 +12,7 @@ import { CooldownTimer } from './cooldown';
 
 export const metadata: Metadata = menuMetadata('Workshops');
 
-// Proposed F14 step 8: the workshops the signed-in hacker was checked in to (their badge or QR scanned at a
+// SPEC F14 step 8: the workshops the signed-in hacker was checked in to (their badge or QR scanned at a
 // session checkpoint), newest first, in the event timezone (I-8), and the cooldown before the next one.
 export default async function WorkshopsPage() {
   const { me: m } = await loadMyEvent('/me/workshops');

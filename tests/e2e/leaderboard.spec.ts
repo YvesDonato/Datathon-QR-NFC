@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { E2E_ORIGIN, signIn } from '../fixtures/e2e';
 import { createAccount, createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
-// SPEC F17 step 6 (proposed): the organizer's projector board, Freeze, and each hacker's rank on /me.
+// SPEC F17 step 6 (v0.12): the organizer's projector board, Freeze, and each hacker's rank on /me.
 let f: StandardFixture;
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {

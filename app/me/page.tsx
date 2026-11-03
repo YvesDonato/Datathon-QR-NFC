@@ -28,7 +28,7 @@ export default async function MePage() {
   const { user, now, me: m } = await loadMe('/me');
   // v0.11.25: the pass and the staff roles (v0.4.1: links to their events; the admin and scanner pages check
   // the role again) don't depend on each other, so they load together.
-  // F17 (proposed): connections and rank load with them, for the session's own participant only.
+  // F17 (v0.12): connections and rank load with them, for the session's own participant only.
   const [passes, { data: roles, error }, connections, rank, workshops] = await Promise.all([
     m ? myPasses(db(), user.email ?? '', env().PASS_TOKEN_SECRET, new Date()) : Promise.resolve([]),
     db().from('event_staff').select('role, events!inner(slug, name, starts_at)').eq('user_id', user.id)

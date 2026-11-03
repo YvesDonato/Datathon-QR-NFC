@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { E2E_ORIGIN, signIn } from '../fixtures/e2e';
 import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
-// Proposed §13: the organizer's Workshops tab and the Leaderboard tab's connection stats.
+// SPEC §13: the organizer's Workshops tab and the Leaderboard tab's connection stats.
 let f: StandardFixture;
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {

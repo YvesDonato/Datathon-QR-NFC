@@ -16,7 +16,7 @@ const mineSchema = z
   .strict();
 export type MyWorkshops = z.infer<typeof mineSchema>;
 
-// Proposed F14 step 8: the signed-in hacker's live workshop (session checkpoint) scans, newest first. Only with
+// SPEC F14 step 8: the signed-in hacker's live workshop (session checkpoint) scans, newest first. Only with
 // the participant id the server resolved from the session (myEvent()), never one from a request.
 export async function myWorkshops(db: Db, participantId: string): Promise<MyWorkshops> {
   const { data, error } = await db.rpc('my_workshops', { p_participant_id: participantId });

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { formatCountdown } from '@/lib/domain/countdown';
 
-// Proposed F14 step 8: "Next workshop check-in in 4:10". `leftMs` is availableAt − the database clock when the page
+// SPEC F14 step 8: "Next workshop check-in in 4:10". `leftMs` is availableAt − the database clock when the page
 // was rendered (I-7); this only measures elapsed time since then, so a wrong device clock can't shorten it.
 export function CooldownTimer({ leftMs }: { leftMs: number }) {
   const [start] = useState(() => performance.now());

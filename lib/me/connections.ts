@@ -8,7 +8,7 @@ import { emailKey, withinLimit } from '@/lib/pass/handlers';
 type Db = SupabaseClient<Database>;
 type Account = { id: string; email?: string | null };
 
-// SPEC F17 (proposed): what record_connection() answers, plus the rate limit.
+// SPEC F17 (v0.12): what record_connection() answers, plus the rate limit.
 const CONNECT_CODES = ['PENDING', 'MUTUAL', 'ALREADY_PENDING', 'ALREADY_MUTUAL', 'SELF', 'NOT_FOUND', 'NOT_ATTENDEE', 'NOT_CHECKED_IN', 'CLOSED'] as const;
 export type ConnectCode = (typeof CONNECT_CODES)[number] | 'RATE_LIMITED';
 export type ConnectResult = { code: ConnectCode; firstName?: string };

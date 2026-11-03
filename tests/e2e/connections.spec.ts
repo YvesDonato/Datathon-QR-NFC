@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { E2E_ORIGIN, signIn } from '../fixtures/e2e';
 import { createAccount, createStandardFixture, type StandardFixture } from '../fixtures/standard';
 
-// SPEC F17 (proposed): Connect on a badge page; it counts once both have tapped; /me links Connections.
+// SPEC F17 (v0.12): Connect on a badge page; it counts once both have tapped; /me links Connections.
 let f: StandardFixture;
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {

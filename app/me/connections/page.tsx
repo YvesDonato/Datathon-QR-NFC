@@ -10,7 +10,7 @@ import { ConnectionList } from './list';
 
 export const metadata: Metadata = menuMetadata('Connections');
 
-// SPEC F17 (proposed): all of the signed-in hacker's mutual connections and their own leaderboard rank. Who met
+// SPEC F17 (v0.12): all of the signed-in hacker's mutual connections and their own leaderboard rank. Who met
 // whom is only ever shown to the two people involved; the ids come from the session (myEvent()), never a request.
 export default async function ConnectionsPage() {
   const { me: m } = await loadMyEvent('/me/connections');

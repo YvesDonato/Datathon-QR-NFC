@@ -17,7 +17,7 @@ interface ConnectionData {
 
 const POLL_MS = 10_000;
 
-// Proposed §13 (F17): how the connection game is going. Totals only: organizers never see who met whom.
+// SPEC §13 (F17): how the connection game is going. Totals only: organizers never see who met whom.
 // Below the board, so the projector's full screen shows only the board.
 export function ConnectionStats({ slug }: { slug: string }) {
   const api = useApi();

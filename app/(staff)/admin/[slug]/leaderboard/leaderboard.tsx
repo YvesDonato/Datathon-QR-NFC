@@ -13,7 +13,7 @@ interface Board {
 
 const REFRESH_MS = 10_000;
 
-// SPEC F17 step 6 (proposed): the top 10 by mutual connections, refreshed every 10 s, for the projector. Names are
+// SPEC F17 step 6 (v0.12): the top 10 by mutual connections, refreshed every 10 s, for the projector. Names are
 // "First L." only. Freeze fixes the board before prizes; full screen hides everything else.
 export function Leaderboard({ slug }: { slug: string }) {
   const api = useApi();
