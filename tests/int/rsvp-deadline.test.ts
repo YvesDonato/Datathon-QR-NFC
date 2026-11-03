@@ -188,7 +188,7 @@ describe('RSVP deadline (SPEC F13, v0.9)', () => {
     sent = await drain();
     const [reminder] = sentTo(sent, fresh.email);
     if (!reminder) throw new Error('no reminder email');
-    expect(reminder.subject).toMatch(/^Reminder: reply by .+ for Deadline open$/);
+    expect(reminder.subject).toMatch(/^Reminder: Deadline open starts in (19|20|21) days$/); // v0.11.49: it starts in 20 days
     expect(reminder.from).toBe('Station <p@localhost>'); // v0.11.43: the usual sender again (v0.11.37 to v0.11.42: Jobs, then Urgent)
     expect(reminder.text).toContain('A reminder: you\'re invited');
     expect(reminder.text).toContain('11:59 PM');

@@ -184,7 +184,7 @@ async function participantEmail(opts: DrainOptions, row: OutboxRow): Promise<Out
       if (sentError) throw new Error(`rsvp history load failed (${sentError.code})`);
       reminder = (count ?? 0) > 0;
     }
-    email = renderRsvpEmail({ firstName: p.first_name, event, rsvpUrl: `${opts.appOrigin}/rsvp#${token}`, closesAt, replyBy: earlierReplyBy(replyBy, closesAt, opts.now?.() ?? new Date()), reminder });
+    email = renderRsvpEmail({ firstName: p.first_name, event, rsvpUrl: `${opts.appOrigin}/rsvp#${token}`, closesAt, replyBy: earlierReplyBy(replyBy, closesAt, opts.now?.() ?? new Date()), reminder, now: opts.now?.() });
   } else if (row.kind === 'team_invite') {
     if (p.team_id !== null) return null; // joined a team since (v0.11.25): the invite no longer applies
     // v0.11.47: only invites they can still accept: forming open, the event not over, a team with room.
