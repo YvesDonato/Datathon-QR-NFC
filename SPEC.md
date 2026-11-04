@@ -1,6 +1,6 @@
 # Sheridan Datathon Station — Product & Technical Specification
 
-> **Status:** Draft v0.11.50 · **Owner:** Ade · **Last updated:** 2026-11-03
+> **Status:** Draft v0.12 · **Owner:** Ade · **Last updated:** 2026-11-03
 > The app is **Station** (Sheridan Datathon Station, `https://station.sheridandatathon.com`); it was called Passline until v0.11.21.
 
 ## 0. How to read this document
@@ -21,7 +21,7 @@ The club runs tech and networking events. People apply through a Google Form, wh
 |----|------|---------|
 | G1 | An applicant who answers Yes to their RSVP gets a personal QR pass by email automatically | ≤ 5 min from the RSVP Yes to the email being sent (p95) |
 | G2 | Fast, duplicate-proof door check-in | ≤ 3 s per person, from the code entering the frame to the result on screen |
-| G3 | At most one serving per participant per meal | 0 duplicate live meal scans, enforced by the database |
+| G3 | At most one serving per participant per meal, unless an organizer turns on seconds for it (v0.12) | 0 duplicate live meal scans, enforced by the database (seconds are served without a second scan row) |
 | G4 | Workshop/session attendance recorded | Every session scan attributable to a participant and a time |
 | G5 | Organizers see live counts and post-event analytics | Dashboard refresh ≤ 10 s; CSV export |
 | G6 | A linked NFC badge works wherever a QR pass works, and opens an opt-in profile when tapped | Same rules and result codes as QR; the profile shows only opted-in fields (§6.5) |
@@ -40,7 +40,7 @@ The following are out of scope for v1:
 ### v2 candidates (do not build yet)
 
 - A Wallet pass (`.pkpass`).
-- "Contact swap": saving another participant's opted-in profile to your own list. (The opt-in badge profile itself shipped in v0.3, §6.5.)
+- "Contact swap": saving another participant's opted-in profile to your own list. (The opt-in badge profile itself shipped in v0.3, §6.5, and mutual connections in v0.12, F17; saving someone who hasn't connected back stays out.)
 - Co-attendance analytics UI.
 - Offline queue with sync.
 - Unlimited-scan checkpoints (booth visit counters).
@@ -65,9 +65,12 @@ The following are out of scope for v1:
 | **Outbox** | A queue table of emails to send. Emails are never sent inline in a request. |
 | **Badge** | An NFC tag whose UID is linked to one participant for one event, by staff at the event (v0.10; from v0.5 to v0.9.2 its holder claimed it). Its NDEF payload is `${BADGE_ORIGIN}/profile/<uid>?tap` (§6.5). |
 | **Badge profile** | The page `/profile/<uid>`. Public since v0.9: anyone who taps the badge sees the name and links (LinkedIn, and since v0.9.2 Discord and website) if the participant shares them (on by default). |
-| **Hacker menu** | `/me` (v0.6; no event slug since v0.6.1): an attendee's own page for their event, with **Hacker profile**, **Team** (v0.7), **Hackers** (F16), **Schedule**, **Emergency contact** and **My pass**. Tapping your own badge opens it (F14). |
+| **Hacker menu** | `/me` (v0.6; no event slug since v0.6.1): an attendee's own page for their event, with **Hacker profile**, **Team** (v0.7), **Hackers** (F16), **Schedule**, **Connections** and **Workshops** (v0.12), **Emergency contact** and **My pass**. Tapping your own badge opens it (F14). |
 | **Team** | Up to 4 accepted attendees of one event, with a name, a join code and any number of tracks (F15, v0.7; v0.11.50: at most one before). |
 | **Track** | A prize category of an event that a team enters (e.g. "Best AI/ML Project"). Organizers type them; placing prizes (1st, 2nd, 3rd) are not tracks. |
+| **Workshop** | What hackers and organizers call a `session` checkpoint (F8). |
+| **Cooldown** | The minutes that must pass between one person's check-ins to different workshops (§8 step 11b, v0.12). |
+| **Connection** | Two attendees who have each pressed Connect on the other's badge page (F17, v0.12). One press alone doesn't count. |
 
 ---
 
@@ -105,6 +108,10 @@ The following are out of scope for v1:
 | See an attendee's emergency contact, overnight stay, team status and accessibility needs (v0.6, v0.9) | — | — | — | ✅ |
 | See an attendee's allergies (v0.9) | — | — | ✅ on an accepted meal scan | ✅ |
 | Set the RSVP deadline (Info page, v0.9) | — | — | — | ✅ |
+| Set the workshop cooldown (Info page, v0.12) | — | — | — | ✅ |
+| Connect on another attendee's badge page; see own connections and leaderboard rank (F17, v0.12) | — | ✅ signed in with their registered email; connecting also needs a live door check-in | Only if also such an attendee | Only if also such an attendee |
+| See own workshops (`/me/workshops`, v0.12) | — | ✅ signed in with their registered email | Only if also such an attendee | Only if also such an attendee |
+| Open and freeze the connection leaderboard (v0.12) | — | — | — | ✅ |
 | Write badge tags while linking | — | — | ✅ | ✅ |
 
 Authorization is always checked **server-side**. Hiding a button is not authorization.
@@ -332,8 +339,8 @@ end $$;
 - **Once per checkpoint** is enforced by `scans_one_live`. Voiding a scan frees the slot.
 - **Cross-event scans are impossible**, enforced by the composite foreign keys (T-SCAN-22).
 - **Exactly one door checkpoint per event** is enforced by `checkpoints_one_door`.
-- **Never hard-delete scans.** Void them instead.
-- **Participant deletion is a tombstone.** Set `deleted_at`, set `first_name = 'Deleted'`, `last_name = ''`, `email = 'deleted+<id>@invalid'`, set `search_text = ''`, and null out dietary notes, LinkedIn, Discord username and website (v0.9.2), emergency contact (v0.6), the profile setup answers (v0.9) and any legacy photo (deleting the existing photo object from storage). Revoke the pass with reason `deleted`. Delete the badge link. Scans remain, so aggregate counts stay correct. The tombstone also takes them out of their team (v0.7; v0.11.47: deleting the team when they were its last member), clears bio and pace, and sets `directory_opt_in = false` (F16).
+- **Never hard-delete scans.** Void them instead. One exception (v0.12, owner's request): deleting a checkpoint none of whose scans are live deletes its removed (voided) scans with it (§11 Checkpoints).
+- **Participant deletion is a tombstone.** Set `deleted_at`, set `first_name = 'Deleted'`, `last_name = ''`, `email = 'deleted+<id>@invalid'`, set `search_text = ''`, and null out dietary notes, LinkedIn, Discord username and website (v0.9.2), emergency contact (v0.6), the profile setup answers (v0.9) and any legacy photo (deleting the existing photo object from storage). Revoke the pass with reason `deleted`. Delete the badge link. Scans remain, so aggregate counts stay correct. The tombstone also takes them out of their team (v0.7; v0.11.47: deleting the team when they were its last member), clears bio and pace, sets `directory_opt_in = false` (F16) and deletes their connection taps (v0.12).
 - **Any view** MUST be created `with (security_invoker = true)`, and `select` on it MUST be revoked from `anon` and `authenticated`. Views otherwise run with owner privileges and bypass RLS.
 - **Any function** in `public` MUST have `revoke all ... from public, anon, authenticated` and `grant execute ... to service_role`. Postgres grants EXECUTE to PUBLIC by default. SECURITY DEFINER functions MUST `set search_path = public, pg_temp` (T-SEC-08).
 
@@ -441,6 +448,36 @@ alter table participants
   add column pace text check (pace in ('competitive','balanced','casual'));
 ```
 Directory consent is independent of `profile_public` (badge sharing) and `looking_for_team` (names-only teammate discovery). `parseProfileInput()` validates bio and pace: missing fields stay unchanged, blank text clears to NULL, CRLF becomes LF, outer whitespace is trimmed; bio is plain text. `_set_hacker_profile()` / `save_hacker_profile()` write them with the existing own-row authorization. Audit `profile.update` contains at most boolean sharing/opt-in flags; never bio, pace or networking details. New signatures and `hacker_directory()` have I-6 permissions and T-SEC-08 coverage.
+
+### 5.8 Connections (F17, v0.12)
+
+```sql
+create table connection_taps (                       -- "I pressed Connect on your badge"
+  event_id uuid not null references events on delete cascade,
+  from_participant_id uuid not null, to_participant_id uuid not null,
+  created_at timestamptz not null default clock_timestamp(),
+  primary key (from_participant_id, to_participant_id),
+  check (from_participant_id <> to_participant_id),
+  foreign key (from_participant_id, event_id) references participants (id, event_id) on delete cascade,
+  foreign key (to_participant_id, event_id) references participants (id, event_id) on delete cascade);
+alter table events add column leaderboard_frozen_at timestamptz;  -- null: live
+```
+A pair is **mutual** when both directions exist; it connected at the later of the two taps. Deny-all RLS, indexes on `to_participant_id` and `event_id`. A trigger deletes a person's taps when the tombstone sets `deleted_at` (§5.1); the retention run deletes an event's taps 30 days after it ends (§15). Points are derived from these rows, never stored.
+
+### 5.9 Workshop cooldown (v0.12)
+
+```sql
+alter table events add column session_cooldown_minutes int not null default 5
+  check (session_cooldown_minutes between 0 and 120);  -- 0: off (§8 step 11b)
+```
+
+
+### 5.10 Meal seconds (v0.12)
+
+```sql
+alter table checkpoints add column seconds_mode boolean not null default false
+  check (kind = 'meal' or not seconds_mode);  -- §8 step 10: a repeat tap at this meal is served
+```
 
 ---
 
@@ -610,7 +647,7 @@ Same as F6 at a `meal` checkpoint with `requires_checkin = true`. The response i
 
 ### F8 — Sessions, workshops & custom checkpoints
 
-- **Sessions:** `kind = session`, with optional `capacity`. This feeds attendance analytics.
+- **Sessions:** `kind = session`, with optional `capacity`. This feeds attendance analytics. **v0.12:** these are the event's **workshops**: each scan shows on the hacker's Workshops page (F14 step 8), and a cooldown separates check-ins to different workshops (§8 step 11b).
 - **Custom:** swag pickup, raffle entry, sponsor booth. These are once per participant in v1. `requires_checkin` is configurable (e.g. a raffle desk outside the venue sets it to false).
 
 ### F9 — Staff onboarding and sign-in (v0.4)
@@ -666,12 +703,13 @@ An organizer adds a walk-in with name and email (source `walk_in`, status `accep
 ### F14 — Hacker menu (v0.6)
 
 1. **Opening it.** An attendee taps their own badge (§6.5: `badge_profile` returns `self`), or signs in: both open `/me` (v0.6.1: no event slug in the URL). `/me` also keeps the staff links (F9 step 7). (v0.11.8 showed the schedule on the menu page; v0.11.9 moved it back to `/me/schedule`.)
-2. **Menu items** (v0.11.18 order): **Hackers** (`/me/hackers`), Schedule, Team, Emergency contact and Hacker profile, with My pass above them. **Who and which event.** A signed-in, accepted, undeleted attendee, matched by verified email, up to 30 days after the event ends (`myEvent()`). With more than one such event, `/me` shows the next one that hasn't ended, else the most recent (DECISION, v0.6.1: one event at a time; an event picker can come later). Without one, `/me` shows only staff links or "No upcoming events yet", and the other menu pages are 404. (v0.11.25: someone with a pending, waitlisted or withdrawn row in an event that hasn't ended is told why instead: their invitation is in their email, they're on the waitlist, or they gave their spot away.) `proxy.ts` sends signed-out visitors to `/login` and back.
+2. **Menu items** (v0.12 order, from v0.11.18's): **Hackers** (`/me/hackers`), Schedule, **Connections** (F17), **Workshops** (step 8), Team, Emergency contact and Hacker profile, with My pass above them. **Who and which event.** A signed-in, accepted, undeleted attendee, matched by verified email, up to 30 days after the event ends (`myEvent()`). With more than one such event, `/me` shows the next one that hasn't ended, else the most recent (DECISION, v0.6.1: one event at a time; an event picker can come later). Without one, `/me` shows only staff links or "No upcoming events yet", and the other menu pages are 404. (v0.11.25: someone with a pending, waitlisted or withdrawn row in an event that hasn't ended is told why instead: their invitation is in their email, they're on the waitlist, or they gave their spot away.) `proxy.ts` sends signed-out visitors to `/login` and back.
 3. **Hacker profile** (`/me/profile`): **v0.9 profile setup** first: staying overnight (Yes / No / Not sure, required), team status (have a team / looking for a team, which lists their name in the teammate directory / going solo, required), allergies with how severe (Mild / Moderate / Severe: life-threatening; optional, separate from dietary preferences) and accessibility needs (optional, short answer). **v0.11.17:** the emergency contact is no longer on this page: it is set only on the Emergency contact page (step 5). It is still required for a finished profile (§5.6), so while it is missing the profile page links to it ("Add your emergency contact →") and its menu item warns "Not set". Until overnight and team status are answered the page is headed "Finish setting up your profile" and the menu item says "Finish setting up". Arriving from the RSVP's "Set up my hacker profile" (`/me/profile?setup=1`), setup is a guided walkthrough, one step at a time: the event → health and access → **emergency contact** (v0.11.25, owner's decision: back as step 3, required, so "Your profile is set up" is true; the Emergency contact page still edits it later) → networking (optional). Steps 1–3 save together; the last step's button is **Save and finish** (to `/me`) and **Skip for now** leaves without saving it (v0.11.25: "Done" used to drop what was typed). Step 3 includes **List me in the Hacker directory** (checked by default since v0.11.19), optional pace and a 280-character bio alongside LinkedIn, Discord, website and badge sharing. This is the RSVP directory opt-in: RSVP Yes itself still asks only for a password (F13). Opened any other way (the menu, the profile reminder), the page shows its sections as tabs, each saving its own fields (v0.11.14), in the order Networking, The event, Health and access (v0.11.18); it opens on The event while overnight or team status is unanswered, otherwise on Networking. Team status moves the names-only Looking opt-in only when it changes, so it never undoes an opt-out made on the Team page. **v0.11.25, one source of truth:** in a team, the question is replaced by "In a team: {name}" (the stored answer is kept); leaving or being removed from a team while the answer is looking puts them back under Looking (`_participant_left_team()`), and (v0.11.47) an answer of "I have a team" becomes going solo once they're out of a team (it no longer holds; still a finished profile, listed nowhere until they choose looking); the Team page's Looking switch sets the answer to looking (on) or solo (off, if it was looking); organizers' detail and CSV report `team` for anyone in a team. The option reads "I’m looking for a team (shows me under Looking for a team in the Hacker directory)". Then, as before: name (read-only: the Sheet owns it), badge status, LinkedIn, Discord username and website (v0.9.2, all optional) and badge sharing, plus directory opt-in, pace and bio (the same networking form, **Save links**, also on the full profile page). **DECISION (v0.8.2):** attendees no longer see or edit dietary notes in the app; they come from the Sheet (F3) and only staff see them (organizers, meal scans F7). The forms send no dietary key, so saving keeps the stored notes. (`/api/rsvp` still accepts and prefills them; notes an attendee set earlier still win over the Sheet, F3.)
 4. **Schedule** (`/me/schedule`): the event's `schedule` text with its line breaks, or "not posted yet". **v0.8.2:** a line `9:00-10:00 | Title | Place` (end time and place optional; 24-hour or `1:00 PM`, shown as typed) shows as a time slot, under the other lines above it as day headings (`parseSchedule()`); a line with no slot below it is plain text, and text without any slot line shows as written. **v0.11.5:** timed slots render as a calendar grid with days side by side on wide screens (v0.11.19: from 1024px, each day's width weighted by the square root of its slot count, so a busy day is wider) and one selectable day on phones (default: today in the event timezone, otherwise the first day), a compact 64px-per-hour axis. **v0.11.16:** slots are laid out like the Hacker Package poster: columns by category (Hacking and Workshops left, Food middle, Sponsors and Activities right; a day uses only the columns it has); a slot with nothing overlapping it in another column, and none within 15 minutes, spans the whole day; hacking also runs under the Food column (food draws on top) and into the right column when that is free; overlaps in one column stack, each a step further in than the cards it covers, and a card starting within 15 minutes of one beneath it sits just below that card's title (v0.11.21: a card of 2 hours or more over a same-column card that starts with it is drawn from an hour later, so the card beneath shows its title, time and place; its own text keeps the real start, e.g. Photo Booth on Sponsor Station). A live red now line updates each minute in the event timezone, including the same-night midnight tail, and auto-selects that day on phones; outside the schedule there is no line. Past events turn grey with their category colour retained as a thin left edge; in-progress events have an accent ring and accessible status text. A missing end lasts 30 minutes; crossing midnight and after-midnight starts following afternoon/evening slots stay on the same night. Categories are inferred from titles (first match wins): Workshop, Talk or MLH Meetup → Workshops; Lunch, Dinner, Breakfast or Snack(s), including Snack Cart → Food; Sponsor → Sponsors; Hacking Begins/Ends, Devpost, Draft Due, Demos, Judging, Quiet Rooms or Team formation → Hacking; everything else → Activities. Blocks have category colours and accessible category names, with a legend below; notes remain above the grid and free text keeps its original rendering. **v0.11.19:** each event is a button that opens a dialog with its title, subtitle, category, status (upcoming, happening now, finished), day, start and end with the duration, and place; Escape, Close or a tap outside closes it and focus returns to the event. It replaces the hover card.
 5. **Emergency contact** (`/me/emergency`): at the HMC campus (v0.11.30, owner's request), **Campus Security** with a tap-to-call (905) 815-4044 (`campusSecurity()`), then "In an actual emergency, call 911."; the event's `emergency_info` when posted (nothing otherwise), and the attendee's own contact (name and phone required, relationship optional). The phone input carries the same rule as an HTML `pattern`, so a typo is caught before the form is sent.
 6. **My pass:** the `/p#token` link, or "In your email", "On its way by email" or "The event is over".
 7. Saves go through `save_hacker_profile()` (own row only, §6.5) and audit `profile.update` with at most the sharing and directory opt-in flags.
+8. **Workshops** (`/me/workshops`, v0.12, owner's request): how many workshops they attended and, newest first, each one's name and check-in time in the event timezone (`my_workshops()`: live scans at `session` checkpoints; called only with the participant the server resolved from the session). The workshop comes from the checkpoint the scanner is set to; the badge only identifies the hacker. While a cooldown runs (§8 step 11b) the page counts down "Next workshop check-in in m:ss" from the database clock (I-7), then says "You can check in to your next workshop now." The menu row says "{n} attended", or "Tap your badge at a workshop".
 
 ### F15 — Teams (v0.7)
 
@@ -696,6 +734,15 @@ An organizer adds a walk-in with name and email (source `walk_in`, status `accep
 6a. **Teams lookup (v0.11.30, owner's request):** `/me/hackers` has two link tabs, **Hackers** (the default: everything above) and **Teams** (`?view=teams`). Teams lists the selected event's teams by name (up to 500), with a team-name search (`toSearchText`), **Has room** (fewer than 4 undeleted members) and, once tracks are released, a Track filter (no track names before that). A card shows the team's name, "{n} of 4 members", the spots left, its tracks once released (v0.11.50: each one; the Track filter keeps teams with that track among theirs), and “(your team)” / “(you)”. It names only accepted, undeleted members who opted into the directory; the others count as “+{k} more”. No join codes or join actions (joining stays code-only, F15). Reads share the directory's 60-a-minute limit.
 6. **Privacy:** `hacker_directory()` repeats viewer/event eligibility checks and returns an explicit field allowlist, never email, phone, emergency contact, allergies, accessibility, dietary notes or participant status. It has service-role-only execution, pinned search_path and T-SEC-08 coverage. Tombstones clear all new fields (§5.1); retention follows §15.
 
+### F17 — Connection game (v0.12)
+
+1. **Connect.** Tapping someone's badge opens `/profile/<uid>` (§6.5). A signed-in viewer sees, under the profile: **Connect with {first name}**; "{name} tapped your badge. Connect back to make it count." with **Connect back with {name}**; "Sent! It counts once {name} taps your badge too."; "✓ You're connected with {name}."; "Check in at the door first, then you can connect."; or "Connecting closed when the event ended." On a profile that isn't shared, which shows no name (§6.5), the wording leaves the name out ("Connect", "They tapped your badge…"). A signed-out visitor sees **Sign in to connect** (back to the badge after sign-in). Staff, other events' attendees, applicants who aren't accepted and the holder themselves see nothing.
+2. **DECISION (user decision 2026-10-29): connecting needs a signed-in account and a live door check-in**, so badge links shared before the event can't be farmed; it counts only when **mutual**, so each person has to tap the other. It works until the event ends.
+3. **One decision path:** `record_connection(email, uid)` → `PENDING | MUTUAL | ALREADY_PENDING | ALREADY_MUTUAL | SELF | NOT_FOUND | NOT_ATTENDEE | NOT_CHECKED_IN | CLOSED` (+ the other person's first name). The badge resolves like `badge_profile()`; the tapper is the account's own accepted, undeleted row in that event (the badge only identifies the other person). A transaction-scoped advisory lock on the pair makes two people tapping each other at the same moment get exactly one `MUTUAL` and one `PENDING`. `connection_state(email, uid)` (read-only) decides what the page offers. Connect is a server action (POST); 120 presses per account per hour (§15).
+4. **`/me`** has a **Connections** row: "{n} connections · #{rank} on the leaderboard" ("· {k} waiting" while they have no rank), or "Tap a badge and press Connect" before their first tap. **`/me/connections`** shows the count, their rank, how many people haven't tapped back yet, and everyone they're connected with (name linking to their badge page, plus their LinkedIn only while they share it). `my_connections(participant, limit)` is called only with the participant the server resolved from the session. Who met whom is visible only to those two people; organizers never see it (counts only, §13).
+5. Staff can't play: they aren't attendees (user decision 2026-10-29).
+6. **Leaderboard:** 1 point per mutual connection with another eligible attendee (accepted, undeleted, not `is_test`) of the event, **derived from the taps, never stored** (`_connection_scores()`). Ties share a rank; whoever reached the score first is listed first. Organizers open **Leaderboard** in the admin nav: the top 10 as "First L." and points (`connection_leaderboard()`: no ids, no emails), refreshed every 10 s, with **Full screen** for the projector and **Freeze leaderboard** (confirm) / **Unfreeze**: `events.leaderboard_frozen_at` fixes the board as of that moment, and the page then says "Final results" (audit `leaderboard.freeze` / `leaderboard.unfreeze` with `{}`). **DECISION (user decision 2026-10-29): the board is the projector's; each hacker sees only their own rank** (`connection_rank()`, as of the same freeze).
+
 ---
 
 ## 8. Scan decision procedure — `record_scan()`
@@ -712,13 +759,17 @@ The **order matters**, and the tests pin it down. On every early return, nothing
 | 6 | Participant's event = checkpoint's event | `WRONG_EVENT` (+ other event name; no participant data) |
 | 7 | Participant `status = accepted` | `NOT_ACCEPTED` (+ status) |
 | 8 | Checkpoint `is_open` | `CHECKPOINT_CLOSED` |
+| 9a | v0.12: at a `session` checkpoint with a cooldown set: take a per-participant advisory lock, **before** step 9's checkpoint lock | — |
 | 9 | If capacity is set: lock the checkpoint row **before** step 10 | — |
-| 10 | No live scan exists for (participant, checkpoint). If one exists with **this** `client_scan_id`, it's a replay that committed after step 1 | `ALREADY_SCANNED` (+ previous scan info) / `ACCEPTED` (`replayed: true`) |
+| 10 | No live scan exists for (participant, checkpoint). If one exists with **this** `client_scan_id`, it's a replay that committed after step 1. v0.12: at a meal in seconds mode, an existing serving answers `ACCEPTED` with `seconds: true` and writes nothing (also at step 13's re-read) | `ALREADY_SCANNED` (+ previous scan info) / `ACCEPTED` (`replayed: true`) / `ACCEPTED` (`seconds: true`) |
 | 11 | If `requires_checkin`: a live door scan exists | `NOT_CHECKED_IN` |
+| 11b | v0.12: at a `session` checkpoint with a cooldown set: no live scan at another `session` checkpoint in the last `session_cooldown_minutes` | `SESSION_COOLDOWN` (+ `availableAt`, `cooldownMinutes`) |
 | 12 | If capacity is set: live count < capacity | `CAPACITY_REACHED` |
 | 13 | Insert. On conflict with the arbiter index, re-read: same `client_scan_id` means replay, otherwise `ALREADY_SCANNED` | `ACCEPTED` |
 
 Why step 9 comes before step 10: without the lock, two simultaneous scans of the *same* person at a nearly full session could return `CAPACITY_REACHED` to the second scan instead of `ALREADY_SCANNED` (T-SCAN-11, T-CONC-06).
+
+**Workshop cooldown (v0.12, owner's request).** So a badge can't collect attendance at several workshops in a row, a check-in to a different workshop within `events.session_cooldown_minutes` (default 5, 0 is off, set on the Info page) of the person's last live workshop scan is refused. Only `session` checkpoints obey it or start it; the door, meals and custom checkpoints don't. It comes after step 10, so a repeat at the same workshop still answers `ALREADY_SCANNED`, and voided scans don't count (I-9). Step 9a makes two scans of one person at two workshops at the same moment see each other, so exactly one is `ACCEPTED` (T-CONC-09); taking it before step 9's lock keeps the lock order the same for every scan, so they can't deadlock. **DECISION (owner's decision 2026-11-03): no override.** It applies to QR, NFC and manual scans alike, for organizers too. If someone was checked in to the wrong workshop, staff void that scan (F11), which lifts the cooldown; an organizer can also set the cooldown to 0 for everyone.
 
 **NFC scans (v0.3)** go through `record_badge_scan(p_checkpoint_id, p_staff_user_id, p_badge_uid, p_client_scan_id, p_client_scanned_at)`. It resolves the badge within the checkpoint's event to a participant id (or null) and calls `record_scan(…, 'nfc', null, <participant id>, …)` in the same transaction. Step 4 then resolves like `manual`; a null id returns `NOT_FOUND` after steps 1–3. Step 5 stays QR-only. A badge linked only in another event resolves to null, so NFC never returns `WRONG_EVENT`. `record_scan()` itself is unchanged.
 
@@ -755,7 +806,7 @@ create or replace function public.record_scan(
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   cp checkpoints%rowtype; pa participants%rowtype; ps passes%rowtype; prior scans%rowtype;
-  live_n int; new_id uuid; who jsonb;
+  live_n int; new_id uuid; who jsonb; cooldown int; last_session timestamptz;
 begin
   -- 1. replay
   select * into prior from scans where client_scan_id = p_client_scan_id;
@@ -800,6 +851,12 @@ begin
   if pa.status <> 'accepted' then return jsonb_build_object('code','NOT_ACCEPTED','participant',who); end if;
   if not cp.is_open then return jsonb_build_object('code','CHECKPOINT_CLOSED','participant',who); end if;
 
+  -- 9a. serialize this person's workshop scans (v0.12), always before the step-9 lock
+  select session_cooldown_minutes into cooldown from events where id = cp.event_id;
+  if cp.kind = 'session' and cooldown > 0 then
+    perform pg_advisory_xact_lock(hashtextextended('session_cooldown:' || pa.id::text, 0));
+  end if;
+
   -- 9. serialize capacity-limited checkpoints
   if cp.capacity is not null then
     perform 1 from checkpoints where id = cp.id for update;
@@ -819,6 +876,17 @@ begin
       select 1 from scans s join checkpoints d on d.id = s.checkpoint_id
        where s.participant_id = pa.id and d.kind = 'door' and s.voided_at is null) then
     return jsonb_build_object('code','NOT_CHECKED_IN','participant',who);
+  end if;
+
+  -- 11b. workshop cooldown (v0.12)
+  if cp.kind = 'session' and cooldown > 0 then
+    select max(s.scanned_at) into last_session
+      from scans s join checkpoints c on c.id = s.checkpoint_id
+     where s.participant_id = pa.id and c.kind = 'session' and s.checkpoint_id <> cp.id and s.voided_at is null;
+    if last_session is not null and last_session + make_interval(mins => cooldown) > now() then
+      return jsonb_build_object('code','SESSION_COOLDOWN','participant',who,
+        'availableAt', last_session + make_interval(mins => cooldown), 'cooldownMinutes', cooldown);
+    end if;
   end if;
 
   -- 12. capacity
@@ -883,12 +951,14 @@ All request bodies are validated with zod, and unknown keys are rejected (`.stri
 // 200 Response
 type ScanCode = 'ACCEPTED' | 'ALREADY_SCANNED' | 'NOT_FOUND' | 'REVOKED' | 'NOT_ACCEPTED'
   | 'WRONG_EVENT' | 'NOT_CHECKED_IN' | 'CHECKPOINT_CLOSED' | 'CAPACITY_REACHED'
-  | 'FORBIDDEN' | 'CHECKPOINT_NOT_FOUND' | 'CLIENT_ID_CONFLICT';
+  | 'FORBIDDEN' | 'CHECKPOINT_NOT_FOUND' | 'CLIENT_ID_CONFLICT' | 'SESSION_COOLDOWN';
 { code: ScanCode, replayed?: boolean, voided?: boolean,
   participant?: { id, displayName, status, dietaryNotes?: string | null,
     allergies?: string | null, allergySeverity?: string | null /*v0.9: meal checkpoints, ACCEPTED only*/ },
   previous?: { scannedAt, scannedByName, scannedByMe: boolean },
   reissued?: boolean, revokeReason?: string, otherEvent?: string, capacity?: number,
+  availableAt?: string, cooldownMinutes?: number /*v0.12: SESSION_COOLDOWN*/,
+  seconds?: boolean /*v0.12: ACCEPTED again at a meal in seconds mode*/,
   serverTime: string }
 ```
 - `ScanCode` is defined **once** in `lib/domain/scan-codes.ts` and imported by both server and client. The SQL function's codes MUST match; a test asserts the set equality (T-SCAN-23).
@@ -939,7 +1009,7 @@ Unknown `event_slug` returns `404`. An invalid `linkedin_url` is dropped (set to
 | `DELETE /api/admin/:slug/participants/:id/badge` | organizer | v0.10: unlink their badge → `{ code: 'UNLINKED' }`, or 404 `{ code: 'NOT_FOUND' }` (no badge, or not in this event) (§6.5) |
 | `GET /api/events/:slug/checkpoints/:id/scans` | staff of the event | Who was scanned at that checkpoint (v0.8): live scans of undeleted people, newest first (at most 1000), `{ role, scans: [{ id, displayName, isTest, scannedAt, method, scannedByName, canRemove }] }`; names only, no emails; 404 for another event's checkpoint. `canRemove` only decides whether to offer Remove; removing is `POST /api/scans/:id/void` (§10.6, §11) |
 | `PATCH /api/pass` | token in body; 30 req/min per pass, 600/min per IP (v0.11.25) | Badge profile opt-in: `{ token, profilePublic }` |
-| `GET /profile/:uid` | anyone (v0.9) | Badge profile page (§6.5); an unlinked badge says staff link badges at the check-in desk (v0.10; no self-claim) |
+| `GET /profile/:uid` | anyone (v0.9) | Badge profile page (§6.5); an unlinked badge says staff link badges at the check-in desk (v0.10; no self-claim). v0.12: Connect is a server action on this page (F17) |
 | `POST /api/cron` (also `GET`, v0.10.1, for Vercel Cron) | `Authorization: Bearer DRAIN_SECRET` | v0.9: `run_rsvp_jobs()` (deadline, F13; profile reminder, F14; RSVP reminders only until v0.11.35), then drain the outbox even if the jobs failed; `{ jobs, claimed }`. Every 5 minutes from the scheduler (F4) |
 | `POST /api/admin/:slug/participants/rsvp` | organizer | Queue RSVPs: `{ ids }` → `{ queued }` (F13) |
 | `GET /api/admin/:slug/catering`, `POST …/catering/link` | organizer | v0.11.39: accepted, real, undeleted hackers `{ id, name, dietaryNotes, allergies, allergySeverity }` by name, and `shareUrl` (null without a link); POST makes a new link (the old one stops working) → `{ shareUrl }`, audit `catering.link` with `{}` (§11) |
@@ -947,8 +1017,15 @@ Unknown `event_slug` returns `404`. An invalid `linkedin_url` is dropped (set to
 | `POST /api/rsvp` | RSVP token in body; 30 req/min per link, 600/min per IP (v0.11.25) | `{ token }` → invitation + `profile` prefill; `{ token, going, password, emergencyName, emergencyPhone, emergencyRelation?, dietaryNotes?, linkedin?, profilePublic?, lookingForTeam? }` → `{ code: 'GOING' \| 'NOT_GOING', signedIn, next? }` (F13; `next` is where to go once signed in; JSON bodies only; the emergency contact and a password are required on Yes: 400 `password_required`, `weak_password` or `wrong_password`) |
 | `GET /me` | signed in | The hacker menu for the signed-in person's event (F14, v0.6.1), with their pass (§6.1), and staff links |
 | `GET /me/profile`, `/me/schedule`, `/me/emergency` | signed-in accepted attendee | Hacker menu pages (F14); profile and emergency saves are server actions calling `save_hacker_profile()` |
-| `PATCH /api/admin/:slug/event` | organizer | `{ sheet?, schedule?, emergencyInfo?, teamsOpen?, tracksReleased?, rsvpDeadline?, rsvpReplyBy? }` (v0.11.28: `rsvpReplyBy` like `rsvpDeadline`, 400 when after the deadline), strict, at least one key; `rsvpDeadline` is a future ISO instant or null (v0.9, F13); `{ sheet }` answers `{ sheetId }` as before (F10, §11 Info, §11 Teams) |
+| `PATCH /api/admin/:slug/event` | organizer | `{ sheet?, schedule?, emergencyInfo?, teamsOpen?, tracksReleased?, rsvpDeadline?, rsvpReplyBy?, sessionCooldownMinutes? }` (v0.11.28: `rsvpReplyBy` like `rsvpDeadline`, 400 when after the deadline; v0.12: `sessionCooldownMinutes` a whole number 0–120), strict, at least one key; `rsvpDeadline` is a future ISO instant or null (v0.9, F13); `{ sheet }` answers `{ sheetId }` as before (F10, §11 Info, §11 Teams) |
 | `GET /api/admin/:slug/teams`, `POST …/teams` `{ name, trackIds? }`, `PATCH`/`DELETE …/teams/:id` (`{ name?, trackIds? }`; v0.11.50: `trackIds` replaces the team's tracks, 404 for another event's track; it was `trackId`), `POST …/tracks` `{ text }`, `PATCH`/`DELETE …/tracks/:id`, `PATCH …/participants/:id` `{ teamId }` | organizer | Teams page (§11, v0.7): switches, tracks, teams with members, accepted people without a team; 409 `NAME_TAKEN` / `TEAM_FULL`, 404 for another event's team or track |
+| `GET /api/admin/:slug/leaderboard` | organizer | F17 step 6: `{ frozenAt, rows: [{ rank, name, points }] }`, top 10, `name` = "First L."; no ids or emails |
+| `POST /api/admin/:slug/leaderboard/freeze` | organizer | `{ frozen }` (strict) → `{ frozen }`; audited with no detail |
+| `GET /api/admin/:slug/analytics/workshops` | organizer | §13 workshop analytics: counts per workshop, no names or emails (v0.12) |
+| `GET /api/admin/:slug/analytics/connections` | organizer | §13 connection totals: counts only, never who met whom (v0.12) |
+| `GET /api/admin/:slug/export/workshops.csv` | organizer | Who attended which workshop (§11 Workshops, v0.12); names and times, no emails |
+| `GET /me/connections` | signed-in accepted attendee | All of their mutual connections (F17, v0.12) |
+| `GET /me/workshops` | signed-in accepted attendee | The workshops they attended, and the cooldown (F14 step 8, v0.12) |
 | `GET /me/hackers` | signed-in accepted attendee | Private event-scoped Hacker directory (F16); filters `q`, `looking=1`, `pace`; server action invites through `team_invite()` |
 | `GET /me/team` | signed-in accepted attendee | Team page (F15); its actions are server actions calling the `team_*` functions |
 | `/login`, `/auth/confirm`, `/set-password` | — / emailed link / signed in | Password sign-in and set/reset (F9) |
@@ -982,6 +1059,7 @@ Every state needs an icon, a text label and a color, never color alone. Names ar
 |------|-------|----------|---------|
 | ACCEPTED (door) | green ✓ | **ADMIT** + name; v0.11.40 (Android Chrome, QR or manual scans): a **Link badge** button that opens the §10.4 link sheet for them | auto 2.5 s (tapping Link badge closes it into the sheet) |
 | ACCEPTED (meal) | green ✓ | **SERVE** + name + the dietary groups as tags (v0.11.39, e.g. HALAL, NO PORK; §13's `dietaryGroups()`) + allergy with severity (v0.9, first) and dietary notes (bold if present; none-like notes such as "N/A" hidden) | auto 2.5 s |
+| ACCEPTED (meal, `seconds`) | green ✓ | **SERVE (seconds)** + the same as SERVE (v0.12) | auto 2.5 s |
 | ACCEPTED (session/custom) | green ✓ | **RECORDED** + name | auto 2.5 s |
 | ACCEPTED `replayed` | green ✓ | same as ACCEPTED, "(confirmed)" | auto 2.5 s |
 | ALREADY_SCANNED, `scannedByMe` and < 60 s ago | amber ⟳ | "You scanned this 8 s ago" | tap |
@@ -995,6 +1073,7 @@ Every state needs an icon, a text label and a color, never color alone. Names ar
 | NOT_CHECKED_IN | amber ! | "Not checked in yet": send to entrance | tap |
 | CHECKPOINT_CLOSED | amber ! | "{checkpoint} is closed" | tap |
 | CAPACITY_REACHED | red ✕ | "FULL ({capacity})" | tap |
+| SESSION_COOLDOWN (v0.12) | amber ! | "COOLDOWN" + name + a live "Next workshop in 4:12": they just checked in to another workshop | tap |
 | FORBIDDEN / CHECKPOINT_NOT_FOUND | red ✕ | "No access": re-select event | tap → checkpoint picker |
 | CLIENT_ID_CONFLICT | amber ! | "Rescan please" | tap |
 | MALFORMED (client) | amber ? | "Not a Datathon code" | auto 1.5 s |
@@ -1050,13 +1129,17 @@ After a volunteer's own scan, "Undo last" is visible for 120 s. It asks for a re
 |------|----------|
 | Dashboard | Live counts per checkpoint (10 s poll). Door check-in rate. Meals served vs checked in. Arrivals chart (15-min buckets). Outbox pending/failed. `NOT_FOUND` spike alert. **Warning if within 30 min of `starts_at` and the door is closed.** (v0.11.36 to v0.11.38 also charted dietary restrictions; on Catering since v0.11.39.) |
 | Participants | Search/filter by status (v0.11.27: the filter offers pending, accepted and withdrawn, the only ones Station sets since v0.4), pass state, scans, and (v0.11.27) by what the Sheet decided: an **In the Sheet** column (Accepted, Waitlisted or —) with a filter of the same name (F10). Tick applicants and **Send RSVP** (F13); pending rows show "RSVP sent", or "RSVP email failed: send it again" when their newest RSVP email failed for good (v0.11.25). **Add attendee**: a walk-in, or **Not RSVPed yet** for a pending applicant (F12, v0.7.1). **Revoke RSVP** (v0.9.1, e.g. after a test; confirm first) on anyone invited or answered: their link stops working, waiting email is cancelled, any pass is cancelled (`status_change`, so a Yes to a new RSVP issues a fresh one) and the badge unlinked, and they are pending with no RSVP sent; profile and account stay (`revoke_rsvp()`, audit `rsvp.reset` with `{}`). Actions: resend pass (confirm: "their old code will stop working"), revoke, add walk-in, delete (tombstone), view scan history, void a scan. The detail shows the hacker's emergency contact, with a `tel:` link (v0.6), and their profile setup answers (v0.9). **Badges (v0.10):** rows show "Badge linked"; accepted rows get **Link badge** / **Replace badge** where Web NFC exists (Android Chrome; no button elsewhere): a dialog "Tap the badge to link it to {name}" runs the reader until one good tap and any profile-link write (§6.5) finishes, then `POST /api/events/:slug/badges` (an organizer's link moves a badge linked to someone else) and the outcome is the page's status message (`linkNotice()`), never a green screen. If Chrome refuses NFC, the dialog's **Start badge reader** retries. **Unlink badge** (confirm first): the badge stops scanning and showing their profile until staff link it again (`DELETE …/participants/:id/badge`); a badge already gone (moved, or the attendee said No) says "That badge was already unlinked". |
+| Workshops (v0.12) | Attendance and fill per workshop (`session` checkpoint), most attended first, with **People**: the Checkpoints page's list of who attended, as a dropdown under the workshop's row, with **Remove** (a void, F11). Tiles: who went to a workshop (and what share of checked-in hackers), workshop check-ins, checked in but no workshop, cooldown refusals. How many workshops each checked-in hacker attended (0, 1, 2, 3 or more), check-ins per 15 minutes, and **Download attendance CSV** (`workshops.csv`). Refreshes every 10 s. §13. |
+| Leaderboard (v0.12) | The connection leaderboard (F17 step 6): top 10, refreshed every 10 s, **Full screen** for the projector (projector-sized type only there; on the page the board is sized like the rest of the admin), **Freeze leaderboard** / **Unfreeze**; a larger "Most connections" title, with no subtitle while live and "Final results" once frozen. Below the board, outside what the projector shows: connections made, hackers connected, one-way taps waiting, connections per hour. Counts only (§13). |
 | Catering (v0.11.39, owner's request) | Accepted, real, undeleted hackers only (§13). The dietary restrictions chart (§13: one bar per group with its count and share); **Who’s in each group**: a card per group with the names (someone in two groups is in both), and Other with each person's note; **Allergies**: name, allergy and severity, severe first, then moderate and mild (severity as text, never colour alone). **Copy link** (top right) copies a share link `${APP_ORIGIN}/catering/<slug>#key`, making it the first time; anyone holding it sees this page read-only without signing in (owner's decision: names, notes and allergies included). The key is derived like a pass token from the event's random `catering_link_id` (`HMAC(PASS_TOKEN_SECRET, 'catering:' + id)`, §6.1), so only the id is stored, and it travels only in the URL fragment. **Reset link** (confirm first) replaces the id, so the old link stops working at once. Every link stops working 30 days after the event ends, when retention deletes the notes (§15). The shared page is `noindex`, sends no referrer, and its API is rate-limited per link. |
-| Checkpoints | CRUD, open/close toggle, capacity, requires_checkin, sort order. Deleting a checkpoint with scans is blocked. **People** (v0.8): who was scanned there, newest first, with **Remove** (a void with a reason, F11). |
+| Checkpoints | CRUD, open/close toggle, capacity, requires_checkin, sort order. Deleting a checkpoint with a live scan is blocked ("Remove their scans under People first, or close it instead"); one whose scans were all removed, e.g. test scans, can be deleted, and its removed scans go with it (v0.12, owner's request; audit `checkpoint.delete` with `{ removedScans }`, a count). **Seconds: Off / On** (v0.12, owner's request; meals only): while on, a hacker already served at that meal taps in again and gets SERVE (seconds), nothing new recorded, so meal counts still count people; audit `checkpoint.seconds` with `{ on }`. **People** (v0.8; v0.12: a dropdown under the checkpoint's row, the button toggles it, with a name search, `toSearchText`): who was scanned there, newest first, with **Remove** (a void with a reason, F11). |
 | Staff | Invite by email + role, list, remove. |
-| Info (v0.6) | **RSVP deadline** (labelled **RSVPs close** since v0.11.28) and **Reply by** (v0.11.28) only (v0.9, in the event timezone, F13), saved with `PATCH /api/admin/:slug/event`; audit `event.info` with `{}`. **Owner’s decision (v0.11.11):** Schedule and Emergency info are set through the same API (`schedule`, `emergencyInfo`), with no fields on this page. The stored text still appears on the hacker Schedule and Emergency contact pages (F14). |
+| Info (v0.6) | **RSVP deadline** (labelled **RSVPs close** since v0.11.28) and **Reply by** (v0.11.28) only (v0.9, in the event timezone, F13), saved with `PATCH /api/admin/:slug/event`; audit `event.info` with `{}`. **Owner’s decision (v0.11.11):** Schedule and Emergency info are set through the same API (`schedule`, `emergencyInfo`), with no fields on this page. The stored text still appears on the hacker Schedule and Emergency contact pages (F14). **Workshop cooldown** (v0.12): minutes between check-ins to different workshops (0–120, default 5, 0 is off; §8 step 11b), with its own Save, since the RSVP form resends a deadline that is refused once it has passed. Audit `event.info` with `{}`. |
 | Teams (v0.7) | **Team forming open** and **Tracks released** switches. Tracks can be renamed and deleted here (teams that chose a deleted track have none). Tracks are added one at a time with the **Add a track** field and its **Add track** button (Enter works too; the field clears and keeps focus for the next one; v0.11.32, owner's request; v0.11.1 to v0.11.31 had no add field on the page), which calls `POST /api/admin/:slug/tracks`. Teams: create (name, tracks), rename, change the tracks (v0.11.50: a box per track, saved as it is ticked), delete (members move out; v0.11.25: through `delete_team()`, which locks the members before the team, the same order as the hacker functions, so it can't deadlock with a member leaving), each with its join code and members (status shown when not accepted); remove a member, or add an accepted person without a team (v0.11.47: the API refuses anyone not accepted, 409 `NOT_ACCEPTED`, e.g. a stale Add after a withdrawal; removing or moving a member gives their old team a new join code, like a hacker's Remove) (those looking for one are marked). The 4-member limit applies to organizers too. Audit `team.*`, `track.*`, `event.teams` with ids, counts and flags only. |
 | Tools (v0.11.22) | **Import CSV** only: applicants from a CSV export of the Sheet, only rows whose Status is Yes/Accepted or Waitlist (v0.11.27: always, no option), previewed before import (F10). No badge writing or linking here (v0.11.4: that moved to Link badge). |
 | Export | CSVs: participants (v0.9: with overnight, team status, allergies and severity), scans (live only, with a voided toggle), per-checkpoint summary. |
+
+**Tabs (v0.12):** below 1700 px wide the admin tabs use the phone's tighter text and padding, so all of them fit in one row at 1440 px (T-ADM-01).
 
 ---
 
@@ -1104,6 +1187,15 @@ All metrics exclude voided scans, `is_test` participants and deleted participant
 | Arrival curve | live door scans per 15-min bucket |
 | Dietary restrictions (v0.11.36; on the Catering page since v0.11.39) | accepted hackers' dietary notes grouped by keyword (`dietaryBreakdown()`; one note's groups: `dietaryGroups()`): Vegetarian, Vegan, Pescatarian, Halal, Kosher, Gluten-free, Dairy-free, Nuts, Seafood/shellfish, No pork, No beef, Eggs; a note can be in several groups; a note in none is Other, or No restrictions when blank or "none", "N/A" and the like. Each count ÷ accepted |
 | Scan problems | `scan_attempts` grouped by `result_code`, per checkpoint. For the post-event review (§16); not shown on the dashboard since v0.7.4 |
+| Workshop attendance (v0.12) | live scans per `session` checkpoint by accepted people; most attended first, then by name |
+| Workshops per hacker (v0.12) | checked-in hackers by how many workshops they have a live scan at: 0, 1, 2, 3 or more |
+| Workshop share (v0.12) | checked-in hackers with at least one workshop ÷ checked in |
+| Workshop check-ins over time (v0.12) | live `session` scans per 15-min bucket |
+| Cooldown refusals (v0.12) | `scan_attempts` with `SESSION_COOLDOWN`, by accepted people |
+| Connections made (v0.12) | mutual pairs between accepted people, each pair once |
+| Hackers connected (v0.12) | accepted people in at least one pair; the share is of checked-in hackers, at most 100% (a door scan voided later could otherwise pass it) |
+| Waiting for a tap back (v0.12) | one-way taps between accepted people |
+| Connections over time (v0.12) | mutual pairs per 1-hour bucket, at the later of the two taps |
 
 ```sql
 create view v_checkpoint_counts with (security_invoker = true) as
@@ -1288,6 +1380,8 @@ select a.checkpoint_id as x, b.checkpoint_id as y, count(*) as both_attended
 | T-SCAN-28 | Volunteer voids own scan at 119 s; at 121 s; voids vol2's scan | `VOIDED`; `FORBIDDEN`; `FORBIDDEN` (organizer: all `VOIDED`) |
 | T-SCAN-29 | Void without reason / reason "ok" (2 chars) | 400 / 400 |
 | T-SCAN-30 | `GET …/checkpoints/:id/scans` (v0.8): A (vol1, fresh), B (vol2), T (org1, manual), N (vol1, 5 min old) at R, as org1 and as vol1; Rv scanned, then tombstoned; vol3; no session; D2 through E1's slug; a bad id; then void A's scan and scan A again | newest first, names and who scanned, `isTest` for T, no email; org1 may remove all, vol1 only A; Rv listed, then left out; 403; 401; 404; 404; A drops off the list and scans `ACCEPTED` again |
+| T-SCAN-32 | v0.12 seconds mode: A served at L, again; seconds on; A again, a retry of that tap, A through `/api/scan`; B's first serving; C; L closed; seconds off; seconds on R; raw SQL seconds on D. Result view: a seconds meal scan with an allergy | `ACCEPTED`, `ALREADY_SCANNED`; 200 `secondsMode: true`; `ACCEPTED` with `seconds: true` and the first scan's id, the same twice, still one live row, 200 `seconds: true`; `ACCEPTED` without `seconds`; `NOT_ACCEPTED`; `CHECKPOINT_CLOSED`; `ALREADY_SCANNED`; 400; check violation. Green "SERVE (seconds)" with the allergy, auto-dismissed |
+| T-SCAN-31 | v0.12: A at workshop W1, then W2 inside the cooldown; the same through `/api/scan`; A at W1 again, at R and at L; B at W2; W2 once the cooldown has passed; a voided workshop scan; cooldown 0; a QR scan, then the badge at another workshop | `SESSION_COOLDOWN` with `availableAt` = the W1 scan + 5 min, `cooldownMinutes: 5`, nothing written; also `serverTime`, `dietaryNotes: null`, no allergies, one `scan_attempts` row; `ALREADY_SCANNED`, `ACCEPTED` ×2; `ACCEPTED`; `ACCEPTED`; doesn't count; `ACCEPTED`; `SESSION_COOLDOWN`. Result view: amber, tap to dismiss, the time left |
 
 ### 14.7 Concurrency — `T-CONC` (MUST use truly parallel connections, e.g. a `pg.Pool` of size ≥ N with `Promise.all`; never sequential awaits)
 | ID | Scenario | Expected |
@@ -1299,6 +1393,7 @@ select a.checkpoint_id as x, b.checkpoint_id as y, count(*) as both_attended
 | T-CONC-05 | Parallel scan of A at L while the door scan is being voided | no deadlock/error; outcome is either `ACCEPTED` or `NOT_CHECKED_IN`; completes < 2 s |
 | T-CONC-06 | W at capacity − 1; A scanned twice in parallel at W | 1 `ACCEPTED` + 1 `ALREADY_SCANNED` (never `CAPACITY_REACHED`) |
 | T-CONC-08 | v0.9: three `run_rsvp_jobs()` at what was a reminder time, 20 Yes/No answers and `queue_rsvps` for the same 20 people, in parallel | no errors (no deadlock); every Yes is accepted with a `pass_issued` row |
+| T-CONC-09 | v0.12: one person scanned at two workshops at the same moment, 30 rounds (100 nightly) | every round exactly 1 `ACCEPTED` and 1 `SESSION_COOLDOWN` |
 | T-CONC-07 | Loop T-CONC-01, -02 and -03 100× in CI nightly | 0 failures (flake = bug). T-CONC-02 caught a real race in this spec's first draft: it fails ~5% of runs without the step-10 replay check |
 
 ### 14.8 Scanner UI — `T-SCUI` (Playwright; Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-video-capture=tests/assets/<qr>.y4m`)
@@ -1336,14 +1431,15 @@ select a.checkpoint_id as x, b.checkpoint_id as y, count(*) as both_attended
 | T-ADM-01 | Volunteer requests every `/admin/*` page and `/api/admin/*` route | 403 server-side | I+E |
 | T-ADM-02 | Toggle checkpoint open → scan → close → scan | applies on the very next scan | I |
 | T-ADM-03 | Add walk-in with "check in now" | participant `walk_in`, live manual door scan | I |
-| T-ADM-04 | Delete a checkpoint that has scans | blocked with message | I |
+| T-ADM-04 | Delete a checkpoint that has scans; v0.12: one with a live and a removed scan, then both removed | blocked with message; 409, then deleted with its removed scans and `{ removedScans: 2 }` audited | I |
 | T-ADM-05 | Delete participant | tombstone per §5.1; counts unchanged; token → `REVOKED` | I |
 | T-ADM-06 | Door closed, now = `starts_at − 20 min` | dashboard warning visible | E |
 | T-ADM-07 | 31 `NOT_FOUND` from vol1 in 5 min | 429 for vol1; alert on dashboard | I |
 | T-ADM-08 | PATCH `{schedule, emergencyInfo}`; v0.9: `rsvpDeadline` (future, null, past, not a time) and the setup answers on the detail; one field alone; 5001 / 2001 chars, `{}`, a wrong type or an extra key; `{sheet}`. Info tab in the browser: only RSVP deadline, save and clear it; no Schedule or Emergency info fields; set their text through the API; participant detail with and without a contact (v0.6) | saved, returned by GET, audit `event.info` with `{}`; the other field unchanged; 400; still `{sheetId}`. The text shows on the hacker Schedule page; the organizer sees the contact with a `tel:` link, or `emergency: null` | I+E |
 | T-ADM-09 | Add attendee with **Not RSVPed yet** (v0.7.1); then Send RSVP; with check-in or a pass as well; the same email again. In the browser: the dialog, the pending row, Send RSVP | 201, `pending`, source `walk_in`, no outbox row, no drain, no scan or pass, audit `participant.applicant` with `{}`; one RSVP email with a `/rsvp#` link; 400; 409. The check-in box disappears; the row shows "RSVP sent" | I+E |
 | T-ADM-11 | v0.9.1 Revoke RSVP on an accepted person with a pass, a badge, an RSVP link and a waiting email; as a volunteer; another event's person; a bad id; then a new RSVP and Yes. In the browser, on the row that shows "RSVP sent" | `RESET`: pending, link and sent time cleared, pass revoked (`status_change`, scans `REVOKED`), badge gone, email cancelled, one `rsvp.reset` audit row with `{}`; 403; 404; 404; queued, then `GOING` with a new `pass_issued`. Confirm dialog, "RSVP revoked", "RSVP sent" and the button gone | I+E |
-| T-ADM-10 | Checkpoints → People at R after A and B were scanned (v0.8); Remove A with "Test scan"; scan A again | both listed, "2 people"; A gone, "1 person"; `ACCEPTED` | E |
+| T-ADM-12 | v0.12: B served at Lunch; Checkpoints: the Seconds switches, Seconds for Lunch on; B at Lunch; off; B again | one switch (Lunch only), "Seconds: Off", then "Lunch: seconds on" and pressed; `ACCEPTED` with `seconds`; "Seconds: Off"; `ALREADY_SCANNED` | E |
+| T-ADM-10 | Checkpoints → People at R after A and B were scanned (v0.8); v0.12: search "BEN", then "zzz", then clear it; Remove A with "Test scan"; scan A again | both listed, "2 people"; only Ben, "1 of 2 people", then "Nobody here matches “zzz”."; A gone, "1 person"; `ACCEPTED` | E |
 
 ### 14.11 Analytics & export — `T-ANA`
 | ID | Scenario | Expected | L |
@@ -1356,6 +1452,10 @@ select a.checkpoint_id as x, b.checkpoint_id as y, count(*) as both_attended
 | T-ANA-06 | Session ranking tie | sorted by name asc | I |
 | T-ANA-07 | v0.11.36: dietary notes "Vegetarian", "VEGAN", "Halal, no pork", "Gluten free / celiac", "lactose intolerant", "Peanuts!", "Végétarian", "veg", "N/A", "None.", blank, "Non-vegetarian", "No dietary restrictions", "low FODMAP"; v0.11.39: `dietaryGroups` and `noRestriction` on single notes; the Catering API with notes and allergies on accepted, test, waitlisted and withdrawn people; in the browser: the Dashboard, then the Catering tab | each in its groups (Halal and No pork both), the none-like ones as No restrictions, "low FODMAP" as Other; only accepted, real, undeleted hackers listed, by name, never email, and the Dashboard has no `dietary`; no chart on the Dashboard; rows "Vegetarian 2 · 50%" … "Other 1 · 25%", "Out of 4 accepted hackers", the names under each group, Other with its note, allergies severe first, no test participant, no sideways scroll at 390 px | U+I+E |
 | T-ANA-08 | v0.11.39 Catering share link: before any link; a volunteer makes one; the organizer makes one; the shared API with it; a wrong key, another event, an unknown slug, extra keys, no key; Reset link, then the old and new keys; 29 and 31 days after the event ends; 31 requests in a minute. In the browser: Copy link, the link in a fresh browser with no session, Reset link | `shareUrl` null; 403; `/catering/<slug>#<32 chars>`, the same URL on reload, one `catering.link` audit row with `{}`, only the random id stored; the same hackers as the organizer sees, no emails; 404 ×3, 400 ×2; old 404 `not_found`, new 200; 200, 404; the 31st is 429. Copied and announced; the list without signing in and the key in no request URL; confirm, a new link copied, the old one says it doesn't work and shows no names | I+E |
+| T-ANA-09 | v0.12 workshop analytics: three workshops, one empty; a voided scan; a test person's scans and refusal | hand-computed attendees, check-ins, workshops per hacker `[1, 0, 1, 1]`, refusals 1, fill, order, buckets labelled in the event timezone, `no-store`; no emails or names | I |
+| T-ANA-10 | v0.12: the analytics endpoints and `workshops.csv` as a volunteer; the analytics with no session | 403; 401 | I |
+| T-ANA-11 | v0.12: the Workshops tab: tiles, table, breakdown, chart, the CSV link, People opened under its row and closed again with the same button; Leaderboard's stats; both at 390 px | the numbers shown; both people listed, "2 people", the button `aria-expanded` and still focused; totals with no names; no sideways page scroll | E |
+| T-ANA-12 | v0.12 `workshops.csv`: a formula-like name, a deleted person, a test person, a voided scan, other checkpoint kinds; 1,100 attendees | BOM and CRLF, the name guarded (I-13), event-timezone times (I-8), only live workshop scans of real people; all 1,100 rows (not cut at PostgREST's cap of 1,000) | I |
 
 ### 14.12 Security & privacy — `T-SEC`, `T-PRIV`
 | ID | Scenario | Expected | L |
@@ -1518,6 +1618,32 @@ Target: at least 95% of attempts under 3 s.
 | T-UI-08 | v0.11.46: `/me/hackers` after signing in (a client navigation from `/login`), a mouse-wheel scroll, then ← Menu; reduced motion; an organizer on `/me`, then `/admin/<slug>` and `/scan/<slug>` | Lenis on (`lenis` class), the wheel glides (`lenis-smooth`) and settles more than 400px down, the menu opens at the top and stays there; no Lenis under reduced motion; Lenis on `/me`, none on the admin and scanner pages | E |
 | T-UI-09 | v0.11.48: `/me` signed in at 1440×900, its sprite's background position sampled every 250 ms for 3 s; `/me`, `/me/profile`, `/me/schedule`, `/me/hackers`, `/me/emergency` and `/rsvp` at 1440 and 390 px wide; reduced motion; the pass page, an admin page and the scanner | decorative (hidden from screen readers, no pointer events, behind the content at z-index −3), partly off the bottom-right corner, a 12-frame 640×399 sprite; the position always lands on a whole frame and shows more than 3 frames; present on each page with no sideways scroll; no animation, frame 1 held; absent on `/p`, `/admin` and `/scan` | E |
 
+### 14.21 Connections — `T-CONN`, `T-LB` (F17, v0.12)
+
+| ID | Scenario | Expected | L |
+|----|----------|----------|---|
+| T-CONN-01 | A→B, again, B→A, again both ways; A's own badge; an unknown badge; a tapper not checked in; another event's attendee, staff, a waitlisted applicant; a withdrawn holder; after the event ends; `connection_state` at each step | `PENDING` (+ name), `ALREADY_PENDING`, `MUTUAL`, `ALREADY_MUTUAL` ×2; `SELF`; `NOT_FOUND`; `NOT_CHECKED_IN`; `NOT_ATTENDEE` ×3; `NOT_FOUND`; `CLOSED`; `SENT` / `RECEIVED` / `MUTUAL` / the same reasons; no row written by a refusal | I |
+| T-CONN-02 | Two people tap each other in parallel (two connections), 40 rounds (100 nightly) | every round exactly one `MUTUAL` and one `PENDING` | I |
+| T-CONN-03 | 121 connect presses by one account in an hour | 120 answered, then `RATE_LIMITED` with nothing written | I |
+| T-CONN-04 | `my_connections` with 6 mutual, 1 waiting on them, 1 that only they tapped; LinkedIn shared and not; limit 5; tombstone one | total 6, waiting 1, newest first, the shared LinkedIn only, no email; 5 rows; total 5 and their taps gone | I |
+| T-CONN-05 | Retention with an event that ended 31 days ago and a live one; run twice | the old event's taps deleted, the live one's kept; 0 the second time | I |
+| T-CONN-06 | Signed out on B's badge; A connects on B's badge; B opens A's badge and connects back; A's `/me` and `/me/connections` | Sign in to connect (with the way back), no button; "Sent!…"; "Ada tapped your badge…", then "✓ You're connected with Ada."; the row says "1 connection · #1 on the leaderboard"; the page lists Ben, linking to his badge and LinkedIn | E |
+| T-LB-01 | A and B with 2 mutual connections each (B first), N and another with 1; a test participant connected with A; a one-way tap; then a tombstone; `connection_rank` | B and A both rank 1, B listed first; the 1-pointers rank 3; the test person nowhere and worth nothing; no ids or emails; A `{points 2, rank 1}`, the one-way tapper `{0, null}`; the tombstoned person's points gone | I |
+| T-LB-02 | Freeze, a new mutual connection, unfreeze | the board and ranks unchanged while frozen, then it moves; `leaderboard.freeze` / `.unfreeze` audited with `{}` | I |
+| T-LB-03 | A volunteer and no session on both endpoints; freeze bodies `{}`, a string, an extra key; 14 people with points | 403, 401; 400 ×3; 10 rows, `no-store` | I |
+| T-LB-04 | The organizer's Leaderboard page, Freeze (confirm); A's `/me` and `/me/connections` | "Ada F.", "2 connections", no Live line, then "Final results" and Unfreeze, no email; "2 connections · #1 on the leaderboard", "You're #1 on the leaderboard." | E |
+| T-LB-05 | Connection totals with a mutual pair, a one-way tap and a pair with a test person; hourly bucket labels, also across the DST change | mutual 1, waiting 1, 2 of 3 connected, one bucket; no names, emails or ids; an hour-long label, 1:00 AM EDT to 1:00 AM EST | U+I |
+
+### 14.22 Workshops — `T-WS` (v0.12)
+
+| ID | Scenario | Expected | L |
+|----|----------|----------|---|
+| T-WS-01 | `my_workshops`: none yet; two workshops and a custom checkpoint; the latest voided | empty; both, newest first, with `availableAt` while the cooldown runs, no emails or ids; only the older one, `availableAt` null | I |
+| T-WS-02 | `remainingMs` and `formatCountdown`: time left, time past, a bad date; 5:00, 4:05, 0:01, 0:00, a negative | as stated, no throw | U |
+| T-WS-03 | A's badge at one workshop, then another inside the cooldown; A's menu and Workshops page; 390 px | "1 attended"; "1 workshop attended", the name and a time with its timezone, a 4 or 5 minute timer that ticks; no sideways page scroll | E |
+| T-WS-04 | The cooldown setting: 10; -1, 121, 1.5, `"5"`, null; a volunteer | saved and returned, audit `event.info` with `{}`; 400 ×5; 403 | I |
+| T-WS-05 | The real scanner: a volunteer records B at a second workshop inside the cooldown | amber COOLDOWN with the name and a ticking "Next workshop in m:ss", still there after 3 s, tap dismisses; nothing recorded | E |
+
 ## 15. Non-functional requirements
 
 - **Latency:** `/api/scan` p95 under 700 ms server-side. The Vercel function region MUST be co-located with the Supabase region.
@@ -1537,6 +1663,7 @@ Target: at least 95% of attempts under 3 s.
   | RSVP Yes password checks per email (v0.7.2; its own bucket) | 10 / 15 min (then refused like a wrong password) |
   | "Forgot or never set your password?" emails per address | 3 / h (over the limit looks the same) |
   | "Forgot or never set your password?" emails per machine (PR #11; v0.11.30: venue scale) | 200 / h (over the limit looks the same) |
+  | Connect presses per account (F17, v0.12) | 120 / h → `RATE_LIMITED`, nothing written |
 - **Browsers:** iOS Safari (current and previous major version) and Chrome for Android (last two versions). Desktop Chrome, Safari and Firefox for admin. NFC features (badge scanning, linking badges, the Tools page) need Chrome on Android and are hidden elsewhere. Opening a badge's profile works on any phone: it only opens the badge's URL.
 - **Typeface (v0.11.24):** Fira Code everywhere, like sheridandatathon.com: every page, form control and email (emails fall back to a system monospace where mail apps block web fonts). No second typeface (T-UI-01).
 - **Page transitions (v0.11.30, owner's request):** every new page and tab **rises into place section by section**: the blocks one level inside the page (cards, the menu, tables) fade in and rise 12px, 40 ms apart, 0.32 s each. Templates (`app/template.tsx`, `app/me/template.tsx`, `app/(staff)/admin/[slug]/template.tsx`) remount per navigation, so persistent layouts (the admin header) stay still and nested templates don't double the effect. The first page load uses the same timing in CSS so server HTML shows without JavaScript; client navigations use Framer Motion (`motion`). Search-parameter changes on the same page (directory filters, Show more) don't animate. The RSVP page's steps (the invitation, the Yes form, You're in, the No confirmation) rise the same way when one replaces another; typing and an error inside a step don't replay it. The profile setup walkthrough's step bar (F14 step 3) sweeps each segment in, or out on Back, as the steps change, and each step's blocks rise into place the same way when it shows (Next, Back, and the networking step after the save; v0.11.33, owner's request). Reduced motion: none of it (T-UI-02).
@@ -1552,7 +1679,8 @@ Target: at least 95% of attempts under 3 s.
 - **Privacy:**
   - The Google Form MUST include a collection notice covering what is collected, why (event admission, food, attendance analytics), who sees it (club organizers and volunteers), and retention.
   - Follow the college's student-organization data policies.
-  - Retention: existing photos, dietary notes, emergency contacts (v0.6), allergies and accessibility needs (v0.9) are deleted 30 days after the event; participant PII 12 months after; aggregate stats are kept.
+  - Retention: existing photos, dietary notes, emergency contacts (v0.6), allergies and accessibility needs (v0.9) and connections (v0.12, F17) are deleted 30 days after the event; participant PII 12 months after; aggregate stats are kept.
+  - Who connected with whom (F17) is visible only to those two people; organizers see counts, and the projector board shows "First L." and points.
   - The Hacker directory (F16) is private to accepted attendees of the selected event, **on by default** (v0.11.19; attendees switch it off on their profile), with consent independent of public badge sharing. It shows name, pace, bio, actual team status and chosen networking links only. Looking without full consent remains names only under its filter. Bio, pace and directory consent follow participant PII retention (12 months); they are cleared immediately by the tombstone. Directory access ends 30 days after the event.
   - Deletion requests are handled through the admin tombstone.
   - The badge profile (v0.9) is public and on by default; participants switch it off or on on `/me/profile` (v0.11.25; the pass page until then), where they can also set their LinkedIn (v0.5). Anyone who taps their badge sees only their name and the links they set: LinkedIn, Discord username and website (v0.9.2). The Google Form's notice should say so.
@@ -1592,6 +1720,8 @@ Target: at least 95% of attempts under 3 s.
 | `NOT_FOUND` | Manual search by name; check for an email typo in the Sheet; organizer adds a walk-in if they're legit |
 | UNKNOWN BADGE | Scan their QR (or manual search). Then link the badge: Manual search → their name → **Link badge** → tap the badge (Android) |
 | `REVOKED` + reissued | Ask them to open their **newest** email; organizer can resend on the spot |
+| Seconds at a meal | An organizer turns **Seconds** on for that meal on Checkpoints; volunteers keep scanning, and anyone already served gets SERVE (seconds). Turn it off when the food runs out |
+| COOLDOWN (a workshop) | They checked in to another workshop minutes ago: wait for the timer on screen. Wrong room? Void that scan (the volunteer who scanned it within 120 s, otherwise an organizer), then scan again. Nobody can override it for one person; an organizer can set the cooldown to 0 on the Info page |
 | `ALREADY_SCANNED` by someone else | Escalate to an organizer |
 | `WRONG_EVENT` | Organizer decides |
 | Network down | Switch to the paper roster; after recovery, an organizer enters paper check-ins through manual scan |
@@ -1642,6 +1772,7 @@ Each slice ends with its tests green in CI and a short demo.
 | **S11** Teams (v0.7) | S11a: tracks, teams, the forming and release switches, the hacker Team page (create, join by code, leave, pick a track) and the admin Teams page. S11b: teammate directory, invites with email, the RSVP opt-in | T-TEAM-01..04, T-TEAM-07 (S11a); T-TEAM-05..07 (S11b) |
 | **S12** RSVP deadline & profile setup (v0.9) | A: RSVP deadline, auto-no, reminders, `/api/cron` and the Coolify scheduler. B: profile setup (overnight, allergies, team status, accessibility), the "you're in" email links, the profile reminder, allergies on meal scans. C: public badge profiles, sharing on by default | A: T-RSVP-08..11, T-CONC-08; B: T-ME-09..10, T-RSVP-12; C: T-NFC-24 (+ rewritten T-NFC-12/14, T-RSVP-06) |
 | **S13** Hacker directory | F16 private event directory, profile networking consent/bio/pace, RSVP walkthrough step 4, moved teammate discovery and invites, tombstone and I-6 grants | T-DIR-01..06, T-TEAM-05/07, T-SEC-08 |
+| **S14** Connections & workshops (v0.12; commits labelled S13c–e) | a: connection game and leaderboard · b: workshop cooldown, the hacker Workshops page, the cooldown setting · c: Workshops tab, connection stats, `workshops.csv` | a: T-CONN-01..06, T-LB-01..04; b: T-SCAN-31, T-CONC-09, T-WS-01..05; c: T-ANA-09..12, T-LB-05 |
 | **S8** NFC badges | N1 badges table + `record_badge_scan` + link API · N2 scanner NFC · N3 badge profile + opt-in · N4 tag writer · N5 (v0.5) self-claimed badges, LinkedIn on `/me`, Tools linker · N6 (v0.10) staff link from Participants and Manual search, organizer unlink, no self-claim | T-NFC-01..29, T-ME-03, T-ING-26 (+ T-NFC-17 manual) |
 
 ---
@@ -1667,6 +1798,8 @@ Each slice ends with its tests green in CI and a short demo.
 ---
 
 ## 20. Changelog
+
+- **v0.12 (2026-11-03)** — Owner's requests. **Connection game** (F17, §5.8), first built on another branch, on `main`'s pages: Connect on badge pages, counted once both people have tapped, for signed-in, checked-in attendees until the event ends; a Connections row on `/me` and `/me/connections`; taps deleted by the tombstone and 30 days after the event; 120 connects per account per hour. **Leaderboard** tab: top 10 for the projector, with Freeze; each hacker sees only their own rank. **Workshops:** a Workshops row on `/me` and `/me/workshops` (F14 step 8). New result code `SESSION_COOLDOWN`: a check-in to a different workshop within `events.session_cooldown_minutes` (default 5, Info page) is refused, with a live timer on the scanner and the hacker's page (§5.9, §8 steps 9a and 11b, §9.1, §10.2, §16). DECISION: no override, not even for organizers. **Analytics:** a Workshops tab with attendance, fill, workshops per hacker, refusals, check-ins over time, People and `workshops.csv`; connection totals below the leaderboard (§11, §13). Below 1700 px the admin tabs tighten so they fit at 1440 px. §1, §2, §3, §5.1, §9.3, §15, §18. Migrations `20261103160000_connections`, `20261103160100_connection_leaderboard`, `20261103161000_workshop_cooldown`, `20261103162000_workshop_connection_analytics`. New tests T-CONN-01..06, T-LB-01..05, T-SCAN-31, T-CONC-09, T-WS-01..05, T-ANA-09..12 (T-CONN-02 and T-CONC-09 also nightly). T-ADM-01 counts the two new tabs and T-ME-07 the two new rows; T-ANA-01's fixture has its two workshop scans 10 minutes apart. Merged after v0.11.50 (owner's requests at the merge): **People** on the Checkpoints and Workshops tabs opens as a dropdown under its row instead of a panel below the table, with its own name search (T-ADM-10 extended); the leaderboard is projector-sized only in Full screen; a checkpoint whose scans were all removed can be deleted, taking those removed scans with it (the one exception to never hard-deleting scans, §5.1; migration `20261103170000_delete_checkpoint_removed_scans`; T-ADM-04 extended); the admin tabs tighten a little more below 1700 px so all 12 fit at 1440 px; a **Seconds** switch on each meal serves hackers who tap in again (§5.10, §8 step 10, migration `20261103171000_meal_seconds`; new T-SCAN-32, T-ADM-12); and the leaderboard's title is larger, without the Live subtitle (T-LB-04).
 
 - **v0.11.50 (2026-11-03)** — A team picks any number of tracks instead of one (owner's request): **Interested tracks** on the Team page is a box per track (it was a select labelled “Your team’s track”), saved with **Save tracks**; organizers tick them per team on the Teams page; the pass page, the Teams lookup (its Track filter matches any of a team's tracks) and the teams-per-track chart (a block on each of the team's bars) show them all. Every team keeps the track it had picked: migration `20261103150000_team_tracks` adds `team_tracks`, copies each `teams.track_id` into it, and adds `set_team_tracks()` and `team_set_tracks()`; `team_set_track()` now saves its one track as the list, so the app before this version keeps working until it is redeployed. The admin teams API takes `trackIds`. §2, §3, §5.5, F5, F15, F16, §9.3, §11; new T-TEAM-12, T-TEAM-02/04/07/09, T-DIR-07, T-PASS-01 and T-SEC-08 updated.
 

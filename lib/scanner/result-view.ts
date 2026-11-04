@@ -1,4 +1,5 @@
 import { dietaryGroups, noRestriction } from '@/lib/domain/dashboard';
+import { remainingMs } from '@/lib/domain/countdown';
 import type { ScanResponse } from '@/lib/scan/schema';
 
 // SPEC §10.2. Every state has an icon, a text label and a colour, never colour alone.
@@ -34,6 +35,8 @@ export interface ResultView {
   /** v0.11.40: who to link a badge to, offered on a door ADMIT made by QR or manual search (§10.2). */
   linkable?: { id: string; name: string };
   name?: string;
+  /** SESSION_COOLDOWN: time left until the next workshop check-in opens, as of when the result is shown. */
+  countdownMs?: number;
   dismiss: { autoMs: number } | 'tap';
   action?: 'manual-search' | 'pick-checkpoint';
   sound: 'chime' | 'buzz' | 'double';
@@ -64,7 +67,7 @@ export function viewFor(outcome: Outcome, ctx: ViewContext): ResultView {
 
   switch (r.code) {
     case 'ACCEPTED': {
-      const headline = HEADLINE[ctx.checkpointKind] + (r.replayed ? ' (confirmed)' : '');
+      const headline = HEADLINE[ctx.checkpointKind] + (r.seconds ? ' (seconds)' : r.replayed ? ' (confirmed)' : '');
       // At a meal: the allergy first (v0.9), then the dietary notes.
       const p = ctx.checkpointKind === 'meal' ? r.participant : undefined;
       const allergy = p?.allergies ? `ALLERGY${p.allergySeverity ? ` (${p.allergySeverity.toUpperCase()})` : ''}: ${p.allergies}` : null;
@@ -114,5 +117,14 @@ export function viewFor(outcome: Outcome, ctx: ViewContext): ResultView {
       return problem('red', '✕', 'No access', { detail: 'Re-select the event', action: 'pick-checkpoint' });
     case 'CLIENT_ID_CONFLICT':
       return problem('amber', '!', 'Rescan please');
+    case 'SESSION_COOLDOWN': {
+      // Both instants are the server's (I-7): the screen ticks down from here.
+      const left = r.availableAt ? remainingMs(r.availableAt, r.serverTime) : 0;
+      return problem('amber', '!', 'COOLDOWN', {
+        ...who,
+        detail: `Just checked in to another workshop. Workshops need ${r.cooldownMinutes ?? 5} min between check-ins`,
+        countdownMs: left,
+      });
+    }
   }
 }

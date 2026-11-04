@@ -6,7 +6,7 @@ import { createStandardFixture, type StandardFixture } from '../fixtures/standar
 const ORG = authStatePath('admin-org');
 const VOL = authStatePath('admin-vol');
 const OTHER_ORG = authStatePath('admin-other-org');
-const PAGES = ['', '/participants', '/teams', '/checkpoints', '/catering', '/staff', '/info', '/export', '/tools'];
+const PAGES = ['', '/participants', '/teams', '/workshops', '/leaderboard', '/checkpoints', '/catering', '/staff', '/info', '/export', '/tools'];
 
 test.describe.configure({ mode: 'serial' });
 test.use({ storageState: ORG });
@@ -355,7 +355,25 @@ test('T-ING-28: Tools → Import CSV previews the Sheet export, takes only Yes a
   await expect(panel.getByRole('alert')).toHaveText('✕ Missing header: Email Address');
 });
 
-test('T-ADM-10: Checkpoints → People lists who was scanned there; Remove voids one, and they can be scanned again', async ({ page }) => {
+test('T-ADM-12: Seconds on a meal lets a hacker who was served there tap in again; off again, they are ALREADY_SCANNED; meals only', async ({ page }) => {
+  expect(['ACCEPTED', 'ALREADY_SCANNED']).toContain((await f.scan({ cp: f.cp.D, staff: f.staff.org1, participantId: f.p.B })).code);
+  expect((await f.scan({ cp: f.cp.L, staff: f.staff.vol1, participantId: f.p.B })).code).toBe('ACCEPTED');
+  await page.goto(`/admin/${f.slug}/checkpoints`);
+  await expect(page.getByRole('button', { name: /^Seconds for/ })).toHaveCount(1); // meals only: Lunch
+  const seconds = page.getByRole('button', { name: 'Seconds for Lunch' });
+  await expect(seconds).toHaveAttribute('aria-pressed', 'false');
+  await expect(seconds).toHaveText(/Seconds: Off/);
+  await seconds.click();
+  await expect(page.getByRole('status')).toContainText('Lunch: seconds on');
+  await expect(seconds).toHaveAttribute('aria-pressed', 'true');
+  const again = await f.scan({ cp: f.cp.L, staff: f.staff.vol1, participantId: f.p.B });
+  expect(again).toMatchObject({ code: 'ACCEPTED', seconds: true });
+  await seconds.click();
+  await expect(seconds).toHaveText(/Seconds: Off/);
+  expect((await f.scan({ cp: f.cp.L, staff: f.staff.vol1, participantId: f.p.B })).code).toBe('ALREADY_SCANNED');
+});
+
+test('T-ADM-10: Checkpoints → People lists who was scanned there, searchable by name; Remove voids one, and they can be scanned again', async ({ page }) => {
   await f.scan({ cp: f.cp.R, staff: f.staff.vol1, token: f.token.A });
   await f.scan({ cp: f.cp.R, staff: f.staff.vol2, token: f.token.B });
   await page.goto(`/admin/${f.slug}/checkpoints`);
@@ -364,6 +382,15 @@ test('T-ADM-10: Checkpoints → People lists who was scanned there; Remove voids
   await expect(people.getByText('Ada Fixture')).toBeVisible();
   await expect(people.getByText('Ben Fixture')).toBeVisible();
   await expect(people).toContainText('2 people');
+  // v0.12 (owner's request): the list has its own name search, normalized like every name search (I-12).
+  const search = people.getByRole('searchbox', { name: 'Search people at Raffle' });
+  await search.fill('BEN');
+  await expect(people.getByRole('row', { name: /Ben Fixture/ })).toBeVisible();
+  await expect(people.getByRole('row', { name: /Ada Fixture/ })).toHaveCount(0);
+  await expect(people).toContainText('1 of 2 people');
+  await search.fill('zzz');
+  await expect(people).toContainText('Nobody here matches “zzz”.');
+  await search.fill('');
   await people.getByRole('button', { name: 'Remove Ada Fixture' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Test scan' }).click();
   // The confirmation names Ada too, so check the table rows.
