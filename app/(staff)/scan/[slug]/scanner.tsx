@@ -249,7 +249,9 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
       // Check-in finished: the ADMIT says so briefly, then clears like any green (the effect below).
       setResult((r) => (r?.mustLink?.id === row.id ? { ...r, linked: true, view: { ...r.view, detail: notice.text, dismiss: { autoMs: LINKED_MS } } } : r));
     } else if (admitRow.current === row) {
-      linkAttempt.current = null; // a waiting check-in takes the next badge tap
+      // A waiting check-in takes the next badge tap, the refused one included (forgotten by the repeat guard below).
+      if (linkAttempt.current) linkTaps.current.delete(linkAttempt.current);
+      linkAttempt.current = null;
     }
     if (linkRow.current === row) setLinkState({ kind: 'result', notice, linked: code === 'LINKED' });
     else setNotice(notice.text); // the sheet was closed while saving: still say what happened
@@ -279,7 +281,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
         const seen = linkTaps.current.get(serial);
         linkTaps.current.set(serial, Date.now());
         if (linkAttempt.current !== null) return;
-        // A waiting check-in: Android repeating a badge held still (e.g. one just refused) isn't a new tap.
+        // A waiting check-in: a badge seen in the last 3 s (the previous person's, still near the phone) isn't theirs.
         if (admitRow.current === linking && seen !== undefined && Date.now() - seen < DEDUPE_WINDOW_MS) return;
         const uid = normalizeUid(serial);
         if (!uid) return setLinkState({ kind: 'waiting', unreadable: true });
@@ -544,7 +546,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
           bg-card text-fg">
             <p>📶 NFC badges: the camera is off. Hold a badge flat against the back of the phone.</p>
             {nfc.state === 'off' && (
-              <Button type="button" onClick={() => void nfc.start()}>
+              <Button type="button" onClick={() => void startReader()}>
                 Start badge reader
               </Button>
             )}

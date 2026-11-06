@@ -18,6 +18,8 @@ export type NfcState = 'off' | 'starting' | 'on';
 const START_ERRORS: Record<string, string> = {
   NotAllowedError: 'NFC permission was denied. Allow it in Chrome’s site settings, then tap Start badge reader.',
   NotSupportedError: 'No usable NFC reader. Check that NFC is turned on in Android settings.',
+  // Chrome's answer when the phone's NFC setting is off.
+  NotReadableError: 'NFC is turned off. Turn it on in Android quick settings, then tap Start badge reader.',
 };
 
 /**

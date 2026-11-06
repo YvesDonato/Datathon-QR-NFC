@@ -35,8 +35,12 @@ export function ResultScreen({ view, shownAt, onDismiss, link }: { view: ResultV
     : link.state.kind === 'result' ? { text: link.state.notice.text, bad: link.state.notice.tone === 'bad' }
     : link.state.unreadable ? { text: 'Couldn’t read that badge. Hold it still and tap again.', bad: true }
     : link.readerError ? { text: `✕ ${link.readerError}`, bad: true }
-    : link.readerState === 'starting' ? { text: 'Starting badge reader…', bad: false }
     : null;
+  // Only ask for the badge once the reader is on: a tap before that goes to Android, which opens the badge's page.
+  const hint = !link ? (tap ? 'Tap to continue' : 'Tap to skip')
+    : link.readerState === 'on' ? 'Tap their badge on the phone to finish check-in'
+    : link.readerState === 'off' && link.needsTap ? 'Tap Start badge reader, then their badge'
+    : 'Starting badge reader…';
   const container = useRef<HTMLDivElement>(null);
   const previous = useRef<Element | null>(null);
 
@@ -81,7 +85,7 @@ export function ResultScreen({ view, shownAt, onDismiss, link }: { view: ResultV
       {countdownText && <span className="text-[28px] font-bold tabular-nums" data-testid="cooldown-timer">{countdownText}</span>}
       {view.detail && <span className="text-[17px] leading-[1.6] m-0 max-w-[520px] opacity-[0.9]">{view.detail}</span>}
       <span id="result-hint" className={mustLink ? 'mt-[8px] text-[20px] font-bold' : 'text-[14px] opacity-[0.78] mt-[8px]'}>
-        {mustLink ? 'Tap their badge on the phone to finish check-in' : tap ? 'Tap to continue' : 'Tap to skip'}
+        {hint}
       </span>
       {link && (
         <div aria-live="polite" aria-atomic="true" className="w-full max-w-[460px]">

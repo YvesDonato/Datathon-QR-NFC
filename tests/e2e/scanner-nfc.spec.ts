@@ -201,27 +201,29 @@ test('T-NFC-29: a door ADMIT reads their badge itself, camera off first; one bad
   expect(await nfcActive(page)).toBe(0);
 });
 
-test('T-NFC-29: a refused link stays on the waiting ADMIT; a repeat of that badge is ignored, the next badge links it (v0.12.2)', async ({ page }) => {
+test('T-NFC-29: a refused link stays on the waiting ADMIT; that badge can be tapped again, and the next badge links it (v0.12.2)', async ({ page }) => {
   await installFakeNfc(page);
   await stubNfcPermission(page, 'granted');
   const pia = await freshHacker('Pia');
   await openScanner(page);
   const result = await recordAtDoor(page, pia);
   await expect.poll(() => nfcActive(page)).toBe(1);
-  await page.route('**/api/events/*/badges', (route) => route.fulfill({ json: { code: 'BADGE_TAKEN' } }));
-  const taken = randomUid();
-  await nfcTap(page, serialOf(taken));
-  await expect(result.getByTestId('admit-link-status')).toHaveText(`✕ Badge ${serialOf(taken)} is linked to someone else. Ask an organizer to move it.`);
-  if (process.env.HOVER_SCREENSHOTS) { await page.waitForTimeout(600); await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/admit-taken.png` }); } // after the fade-in
-  await expect(result).toHaveAttribute('data-dismiss', 'link'); // still waiting
-  await page.unroute('**/api/events/*/badges');
   const posts: string[] = [];
   page.on('request', (r) => {
     if (r.url().endsWith('/badges')) posts.push(r.postData() ?? '');
   });
-  await nfcTap(page, serialOf(taken)); // Android repeating the badge still held there
-  await page.waitForTimeout(500);
-  expect(posts).toHaveLength(0);
+  await page.route('**/api/events/*/badges', (route) => route.fulfill({ json: { code: 'BADGE_TAKEN' } }));
+  const taken = randomUid();
+  const status = result.getByTestId('admit-link-status');
+  await nfcTap(page, serialOf(taken));
+  await expect(status).toHaveText(`✕ Badge ${serialOf(taken)} is linked to someone else. Ask an organizer to move it.`);
+  expect(posts).toHaveLength(1);
+  if (process.env.HOVER_SCREENSHOTS) { await page.waitForTimeout(600); await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/admit-taken.png` }); } // after the fade-in
+  await expect(result).toHaveAttribute('data-dismiss', 'link'); // still waiting
+  await nfcTap(page, serialOf(taken)); // the same badge again, right away: asked again, not ignored
+  await expect.poll(() => posts.length).toBe(2);
+  await expect(status).toHaveText(`✕ Badge ${serialOf(taken)} is linked to someone else. Ask an organizer to move it.`);
+  await page.unroute('**/api/events/*/badges');
   const uid = randomUid();
   await nfcTap(page, serialOf(uid));
   await expect(result).toContainText(`✓ Badge ${serialOf(uid)} linked to ${pia.name}.`);
@@ -238,6 +240,7 @@ test('T-NFC-29: the first check-in on a phone asks for one Start badge reader ta
   const result = await recordAtDoor(page, ivy);
   const start = result.getByRole('button', { name: 'Start badge reader' });
   await expect(start).toBeVisible();
+  await expect(result).toContainText('Tap Start badge reader, then their badge');
   if (process.env.HOVER_SCREENSHOTS) { await page.waitForTimeout(600); await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/admit-start-reader.png` }); }
   expect(await nfcActive(page)).toBe(0); // Chrome needs this tap before it can ask for NFC
   await start.click();
