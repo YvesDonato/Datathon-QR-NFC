@@ -9,6 +9,7 @@ import { formatEventDateTime } from '@/lib/domain/event-time';
 import { adminUrl, errorText, useApi } from './api';
 import { ArrivalsChart, type ArrivalBucket } from './arrivals-chart';
 import { KIND_LABEL } from '@/app/(staff)/scan/[slug]/types';
+import { PageHeader } from './page-header';
 
 type Kind = 'door' | 'meal' | 'session' | 'custom';
 interface DashboardData {
@@ -60,7 +61,7 @@ export function Dashboard({ slug }: { slug: string }) {
 
   return (
     <>
-      <h1>Dashboard</h1>
+      <PageHeader title="Dashboard" description="Live check-ins, meals and scans, refreshed every 10 seconds." />
       {error && (
         <Alert className="flex items-start gap-[12px] m-[0px_0px_14px] p-[15px_17px] [border-width:1px] [border-style:solid]
 

@@ -10,6 +10,8 @@ import { KIND_ICON, KIND_LABEL, type Checkpoint } from './types';
 export function CheckpointPicker(props: {
   checkpoints: Checkpoint[];
   currentId: string | null;
+  /** v0.12.1: no Web NFC on this device, so Check-in (which links each badge) is offered but can't be picked. */
+  doorBlocked: boolean;
   onChoose: (id: string) => void;
   onCancel: () => void;
 }) {
@@ -65,11 +67,13 @@ export function CheckpointPicker(props: {
                 type="button"
                 variant="outline" className="min-h-[58px] justify-start gap-3 rounded-md bg-raised px-4 py-3 text-left whitespace-normal aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:outline aria-pressed:outline-primary [&_small]:block [&_small]:mt-1 [&_small]:text-xs [&_small]:text-muted-foreground"
                 aria-pressed={cp.id === props.currentId}
+                disabled={props.doorBlocked && cp.kind === 'door'}
                 onClick={() => pick(cp)}
               >
                 <span aria-hidden="true">{KIND_ICON[cp.kind]}</span>
                 <span>
                   {cp.name} <small>· {KIND_LABEL[cp.kind]}</small>
+                  {props.doorBlocked && cp.kind === 'door' && <small>Check-in needs an Android phone with NFC (Chrome).</small>}
                 </span>
               </Button>
             ))}

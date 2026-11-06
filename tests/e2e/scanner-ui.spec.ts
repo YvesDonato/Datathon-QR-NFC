@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import { authStatePath, chooseCheckpoint, fakeCameraArgs, saveSignedInState, signIn, warmDevServer } from '../fixtures/e2e';
-import { createStandardFixture, type StandardFixture } from '../fixtures/standard';
+import { authStatePath, chooseCheckpoint, fakeCameraArgs, installFakeNfc, nfcTap, saveSignedInState, serialOf, signIn, warmDevServer } from '../fixtures/e2e';
+import { createStandardFixture, randomUid, type StandardFixture } from '../fixtures/standard';
 
 // UI states driven by stubbed /api/scan responses (CLAUDE.md: route interception for UI-state tests).
 // Scans are triggered through Manual search, so no QR video is needed; the fake camera still runs.
@@ -17,6 +17,10 @@ test.beforeAll(async ({ browser }) => {
 });
 test.afterAll(async () => {
   await f.close();
+});
+// v0.12.1: Check-in runs only on phones with Web NFC, so every scanner here has one (the fake reader).
+test.beforeEach(async ({ page }) => {
+  await installFakeNfc(page);
 });
 
 const ada = { id: 'p-ada', displayName: 'Ada Fixture', status: 'accepted', dietaryNotes: null };
@@ -41,9 +45,11 @@ async function stubScan(page: Page, body: Record<string, unknown>) {
 test('T-SCUI-03: each ScanCode shows its §10.2 colour, icon, label and dismiss rule', async ({ page }) => {
   test.setTimeout(120_000);
   await openScanner(page);
-  const cases: Array<[Record<string, unknown>, { tone: string; icon: string; text: string; dismiss: 'auto' | 'tap' }]> = [
-    [{ code: 'ACCEPTED', replayed: false, scanId: randomUUID(), participant: ada }, { tone: 'green', icon: '✓', text: 'ADMIT', dismiss: 'auto' }],
-    [{ code: 'ACCEPTED', replayed: true, scanId: randomUUID(), participant: ada }, { tone: 'green', icon: '✓', text: 'ADMIT (confirmed)', dismiss: 'auto' }],
+  // v0.12.1: a door ADMIT waits until the badge is linked ('link'); the link answer is stubbed like the scans.
+  await page.route('**/api/events/*/badges', (route) => route.fulfill({ json: { code: 'LINKED' } }));
+  const cases: Array<[Record<string, unknown>, { tone: string; icon: string; text: string; dismiss: 'auto' | 'tap' | 'link' }]> = [
+    [{ code: 'ACCEPTED', replayed: false, scanId: randomUUID(), participant: ada }, { tone: 'green', icon: '✓', text: 'ADMIT', dismiss: 'link' }],
+    [{ code: 'ACCEPTED', replayed: true, scanId: randomUUID(), participant: ada }, { tone: 'green', icon: '✓', text: 'ADMIT (confirmed)', dismiss: 'link' }],
     [{ code: 'ALREADY_SCANNED', participant: ada, previous: { scannedAt: new Date(Date.now() - 600_000).toISOString(), scannedByName: 'Maya', scannedByMe: false } }, { tone: 'red', icon: '✕', text: 'by Maya', dismiss: 'tap' }],
     [{ code: 'NOT_FOUND' }, { tone: 'red', icon: '✕', text: 'UNKNOWN CODE', dismiss: 'tap' }],
     [{ code: 'REVOKED', reissued: true, participant: ada }, { tone: 'amber', icon: '!', text: 'OLD CODE', dismiss: 'tap' }],
@@ -67,6 +73,14 @@ test('T-SCUI-03: each ScanCode shows its §10.2 colour, icon, label and dismiss 
     await expect(result).toHaveAttribute('data-dismiss', want.dismiss);
     if (want.dismiss === 'auto') {
       await expect(result).toBeHidden({ timeout: 4000 });
+    } else if (want.dismiss === 'link') {
+      await result.getByRole('button', { name: 'Link badge' }).click();
+      const sheet = page.getByRole('dialog', { name: 'Link a badge' });
+      const uid = randomUid();
+      await nfcTap(page, serialOf(uid));
+      await expect(sheet).toContainText(`✓ Badge ${serialOf(uid)} linked to Ada Fixture.`);
+      await sheet.getByRole('button', { name: 'Done' }).click();
+      await expect(result).toBeHidden();
     } else {
       await result.click();
       await expect(result).toBeHidden();
@@ -179,7 +193,7 @@ test('T-SCUI-07: the picker lists only open checkpoints, reloaded each time it o
 
 test('T-SCUI-09: "Undo last" is visible for 120 s after my accepted scan, then hidden', async ({ page }) => {
   await page.clock.install();
-  await openScanner(page);
+  await openScanner(page, 'Raffle'); // a green that clears with a tap (a door ADMIT waits for a badge, T-NFC-29)
   await stubScan(page, { code: 'ACCEPTED', replayed: false, scanId: randomUUID(), participant: ada });
   await recordAda(page);
   await page.getByTestId('scan-result').click();

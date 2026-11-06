@@ -1,6 +1,5 @@
 'use client';
 
-import { SectionLabel } from '@/components/section-label';
 import { Alert } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -9,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useCallback, useState } from 'react';
 import { toLocalInput, zonedToUtc } from '@/lib/domain/event-time';
 import { adminUrl, errorText, useApi, useLoad } from '../api';
+import { PageHeader } from '../page-header';
 
 interface EventInfo {
   /** v0.9 (F13): an instant from the API; edited as a datetime-local in the event timezone. */
@@ -77,15 +77,7 @@ export function Info({ slug }: { slug: string }) {
     <div className="grid gap-[24px] min-w-0 pb-[32px] [&_button:focus-visible]:[outline:2px_solid_var(--accent)]
 
           [&_button:focus-visible]:[outline-offset:3px]">
-      <header className="p-[8px_0px] [&_h1]:m-0 [&_h1]:text-[clamp(1.8rem,_3vw,_2.3rem)] [&_h1]:tracking-[-0.045em]">
-        <div>
-          <SectionLabel>EVENT MANAGEMENT</SectionLabel>
-          <h1>Event info</h1>
-          <p className="copy max-w-[680px] m-[7px_0px_0px] text-muted-foreground text-[0.9rem] leading-[1.65]">
-            Set the RSVP deadline for this event.
-          </p>
-        </div>
-      </header>
+      <PageHeader title="Event info" description="The RSVP deadline, the reply-by date and the workshop cooldown." />
       {error && (
         <Alert className="flex items-start gap-[12px] m-[0px_0px_14px] p-[15px_17px] [border-width:1px] [border-style:solid]
 

@@ -87,10 +87,10 @@ describe('dashboard analytics (SPEC §13)', () => {
     const { status, body } = await c.call('catering', org, { slug: f.slug });
     expect(status).toBe(200);
     expect(obj(body).hackers).toEqual([
-      { id: f.p.A, name: 'Ada Fixture', dietaryNotes: 'Vegetarian', allergies: 'Peanuts', allergySeverity: 'severe' },
-      { id: f.p.B, name: 'Ben Fixture', dietaryNotes: 'Halal', allergies: null, allergySeverity: null },
-      { id: f.p.N, name: 'Nia Fixture', dietaryNotes: null, allergies: null, allergySeverity: null },
-      { id: f.p.Rv, name: 'Rae Fixture', dietaryNotes: null, allergies: null, allergySeverity: null },
+      { name: 'Ada Fixture', dietaryNotes: 'Vegetarian', allergies: 'Peanuts', allergySeverity: 'severe' },
+      { name: 'Ben Fixture', dietaryNotes: 'Halal', allergies: null, allergySeverity: null },
+      { name: 'Nia Fixture', dietaryNotes: null, allergies: null, allergySeverity: null },
+      { name: 'Rae Fixture', dietaryNotes: null, allergies: null, allergySeverity: null },
     ]);
     expect(obj((await c.call('dashboard', org, { slug: f.slug })).body)).not.toHaveProperty('dietary'); // moved to Catering
   });

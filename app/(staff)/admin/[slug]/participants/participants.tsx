@@ -16,6 +16,7 @@ import { adminUrl, errorText, useApi } from '../api';
 import { ConfirmDialog, Modal } from '../dialog';
 import { ParticipantDetail } from './detail';
 import { fullName } from './name';
+import { PageHeader } from '../page-header';
 
 export interface Row {
   id: string;
@@ -165,7 +166,7 @@ export function Participants({ slug, badgeOrigin }: { slug: string; badgeOrigin:
 
   return (
     <>
-      <h1>Participants</h1>
+      <PageHeader title="Participants" description="Send RSVPs, add attendees, link badges and see who’s checked in." />
       <div className="tw-admin-toolbar flex flex-wrap [align-items:end] gap-[14px] mb-[20px] p-[18px] [border-width:1px]
 
           [border-style:solid] [border-top-color:var(--line)] [border-right-color:var(--line)]
@@ -494,14 +495,14 @@ export function Participants({ slug, badgeOrigin }: { slug: string; badgeOrigin:
   );
 }
 
-// F12. "Check in now" records a manual door scan through record_scan(). "Not RSVPed yet" adds a pending
-// applicant instead (v0.7.1): nothing is sent until an organizer presses Send RSVP.
+// F12. "Not RSVPed yet" adds a pending applicant instead (v0.7.1): nothing is sent until an organizer presses Send RSVP.
+// v0.12.1 (owner's decision): no "Check in now" here; walk-ins check in at the desk, where their badge is linked (§10.2).
+// The API still takes checkInNow (T-ADM-03).
 function WalkInDialog(props: { slug: string; onDone: (message: string) => void; onCancel: () => void }) {
   const api = useApi();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [checkInNow, setCheckInNow] = useState(true);
   const [sendPass, setSendPass] = useState(false);
   const [notRsvped, setNotRsvped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -509,9 +510,9 @@ function WalkInDialog(props: { slug: string; onDone: (message: string) => void; 
 
   async function submit() {
     setBusy(true);
-    const r = await api<{ code: string; scan?: { code?: string } }>(adminUrl(props.slug, '/participants'), {
+    const r = await api<{ code: string }>(adminUrl(props.slug, '/participants'), {
       method: 'POST',
-      body: notRsvped ? { firstName, lastName, email, notRsvped } : { firstName, lastName, email, checkInNow, sendPass },
+      body: notRsvped ? { firstName, lastName, email, notRsvped } : { firstName, lastName, email, sendPass },
     });
     setBusy(false);
     if (!r.ok) {
@@ -519,13 +520,10 @@ function WalkInDialog(props: { slug: string; onDone: (message: string) => void; 
       setError(code === 'CONFLICT_DUPLICATE_EMAIL' ? 'Someone in this event already uses that email.' : r.status === 400 ? 'Check the name and email.' : errorText(r));
       return;
     }
-    const scanCode = r.data.scan?.code;
     props.onDone(
       notRsvped
         ? `✓ Added ${firstName} as not RSVPed yet. Tick them and press Send RSVP to email the invitation.`
-        : !checkInNow || scanCode === 'ACCEPTED'
-        ? `✓ Added ${firstName}${checkInNow ? ' and checked them in' : ''}.`
-        : `! Added ${firstName}, but check-in failed (${scanCode ?? 'unknown'}). Is the door open?`,
+        : `✓ Added ${firstName}. Check them in at the desk, where their badge gets linked.`,
     );
   }
 
@@ -562,14 +560,9 @@ function WalkInDialog(props: { slug: string; onDone: (message: string) => void; 
         {notRsvped ? (
           <p className="copy tw-admin-muted text-muted-foreground text-[12px] leading-[1.7]">They’re added as an applicant and sent nothing. Send their RSVP from the list when you’re ready.</p>
         ) : (
-          <>
-            <Label className="tw-admin-check">
-              <input type="checkbox" checked={checkInNow} onChange={(e) => setCheckInNow(e.target.checked)} /> Check in now
-            </Label>
-            <Label className="tw-admin-check">
-              <input type="checkbox" checked={sendPass} onChange={(e) => setSendPass(e.target.checked)} /> Email them a pass
-            </Label>
-          </>
+          <Label className="tw-admin-check">
+            <input type="checkbox" checked={sendPass} onChange={(e) => setSendPass(e.target.checked)} /> Email them a pass
+          </Label>
         )}
         {error && (
           <Alert className="flex items-start gap-[12px] m-[0px_0px_14px] p-[15px_17px] [border-width:1px] [border-style:solid]

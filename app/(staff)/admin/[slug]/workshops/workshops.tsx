@@ -9,6 +9,7 @@ import { adminUrl, errorText, useApi } from '../api';
 import { BucketChart } from '../arrivals-chart';
 import { CheckpointPeople, PeopleToggle } from '../checkpoints/checkpoints';
 import { Tile } from '../dashboard';
+import { PageHeader } from '../page-header';
 
 interface WorkshopData {
   timezone: string;
@@ -60,12 +61,11 @@ export function Workshops({ slug }: { slug: string }) {
 
   return (
     <>
-      <h1>Workshops</h1>
-      <div className="flex flex-wrap items-center gap-[8px]">
+      <PageHeader title="Workshops" description="Who went to each workshop, and how many each hacker attended.">
         <Button variant="outline" asChild>
           <a href={adminUrl(slug, '/export/workshops.csv')} download aria-label="Download workshop attendance CSV">Download attendance CSV</a>
         </Button>
-      </div>
+      </PageHeader>
       {error && (
         <Alert className="text-[13px]" asChild>
           <p role="status">! Couldn’t refresh: {error}</p>

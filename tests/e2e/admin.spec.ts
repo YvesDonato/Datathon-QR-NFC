@@ -230,16 +230,26 @@ test('T-ANA-08: Copy link shares Catering read-only without signing in; Reset li
   await anon.close();
 });
 
-test('Admin smoke: walk-in with check-in shows as checked in; void a scan; exports are CSV', async ({ page }) => {
+test('Admin smoke: a walk-in is added without checking in (v0.12.1); void a scan; exports are CSV', async ({ page }) => {
   await page.goto(`/admin/${f.slug}/participants`);
   await page.getByRole('button', { name: 'Add attendee' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('First name').fill('Wanda');
   await dialog.getByLabel('Last name').fill('Walkin');
   await dialog.getByLabel('Email', { exact: true }).fill(`wanda@${f.slug}.test`);
-  await dialog.getByLabel('Check in now').check();
+  await expect(dialog.getByLabel('Check in now')).toHaveCount(0); // check-in is at the desk, where the badge is linked
   await dialog.getByRole('button', { name: 'Add attendee' }).click();
+  await expect(page.getByRole('status')).toContainText('Added Wanda. Check them in at the desk');
+  const added = await f.pool.query<{ id: string; status: string }>(
+    `select id, status from participants where event_id = $1 and first_name = 'Wanda'`,
+    [f.e1.id],
+  );
+  expect(added.rows.map((r) => r.status)).toEqual(['accepted']);
+  expect((await f.pool.query('select id from scans where participant_id = $1', [added.rows[0]?.id])).rows).toEqual([]);
 
+  // Checked in at the desk (a manual door scan), then voided from the admin.
+  expect((await f.scan({ cp: f.cp.D, staff: f.staff.vol1, participantId: added.rows[0]?.id ?? '' })).code).toBe('ACCEPTED');
+  await page.reload();
   const row = page.getByRole('row', { name: /Wanda Walkin/ });
   await expect(row).toContainText('Checked in');
 

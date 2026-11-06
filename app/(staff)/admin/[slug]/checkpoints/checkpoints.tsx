@@ -13,6 +13,7 @@ import { toSearchText } from '@/lib/domain/normalize';
 import { adminUrl, errorText, useApi, useLoad } from '../api';
 import { ConfirmDialog, Modal, VoidDialog } from '../dialog';
 import { KIND_LABEL } from '@/app/(staff)/scan/[slug]/types';
+import { PageHeader } from '../page-header';
 
 type Kind = 'door' | 'meal' | 'session' | 'custom';
 interface Checkpoint {
@@ -73,25 +74,14 @@ export function Checkpoints({ slug }: { slug: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-[20px] mb-[8px] max-[600.001px]:items-start
-
-          max-[600.001px]:gap-[14px] max-[600.001px]:flex-col [&_h1]:m-[0px_0px_28px] [&_p]:m-[8px_0px_0px]
-
-          [&_p]:text-[14px] [&_p]:leading-[1.5] max-[600.001px]:[&_button]:w-full">
-        <div>
-          <h1>Checkpoints</h1>
-          <p className="copy tw-admin-muted text-muted-foreground text-[12px] leading-[1.7]">
-            Manage entry points, meal stations, and event sessions.
-          </p>
-        </div>
-
+      <PageHeader title="Checkpoints" description="Manage entry points, meal stations, and event sessions.">
         <Button type="button" onClick={() => setEditing('new')}>
           <span aria-hidden="true">+ </span>Add checkpoint
         </Button>
-      </div>
+      </PageHeader>
 
       {rows !== null && (
-        <p className="tw-admin-muted text-muted-foreground text-[12px] leading-[1.7]">
+        <p className="text-muted-foreground text-[12px] leading-[1.7]">
           {rows.length} {rows.length === 1 ? 'checkpoint' : 'checkpoints'}
         </p>
       )}

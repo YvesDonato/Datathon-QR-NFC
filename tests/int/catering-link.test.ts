@@ -55,6 +55,9 @@ describe('Catering share link (SPEC §11, v0.11.39)', () => {
     expect(body.event).toEqual({ name: f.e1.name });
     expect(body.hackers).toEqual(obj((await c.call('catering', org, { slug: f.slug })).body).hackers);
     expect((body.hackers as Array<{ name: string }>).map((h) => h.name)).toEqual(['Ada Fixture', 'Ben Fixture', 'Nia Fixture', 'Rae Fixture']);
+    for (const hacker of body.hackers as Array<Record<string, unknown>>) {
+      expect(Object.keys(hacker).sort()).toEqual(['allergies', 'allergySeverity', 'dietaryNotes', 'name']);
+    }
     expect(JSON.stringify(body)).not.toContain('@'); // no emails
 
     // A wrong key, another event (with or without its own link), an unknown slug: the same 404. Bad bodies: 400.

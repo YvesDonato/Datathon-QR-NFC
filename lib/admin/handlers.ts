@@ -894,6 +894,13 @@ export function createAdminApi(deps: AdminDeps) {
       if (!body.success) return badRequest();
       const name = body.data.name === undefined ? undefined : parseTeamName(body.data.name);
       if (name === null) return badRequest();
+      if (body.data.trackIds !== undefined) {
+        const trackIds = [...new Set(body.data.trackIds)];
+        const { data, error } = await db.from('tracks').select('id').eq('event_id', g.eventId).in('id', trackIds);
+        if (error) throw new Error(`tracks load failed (${error.code})`);
+        if (data.length !== trackIds.length) return notFound();
+        // A track can still be deleted between this check and setTeamTracks; that residual race is acceptable.
+      }
       if (name !== undefined) {
         const { data, error } = await db.from('teams').update({ name }).eq('id', id).eq('event_id', g.eventId).select('id').maybeSingle();
         if (error?.code === '23505') return json({ error: 'NAME_TAKEN', message: 'Another team already has that name.' }, 409);

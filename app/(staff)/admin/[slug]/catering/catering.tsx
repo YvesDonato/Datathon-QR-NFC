@@ -12,6 +12,7 @@ import { toSearchText } from '@/lib/domain/normalize';
 import { adminUrl, errorText, useApi, useLoad } from '../api';
 import { DietaryChart } from '../dietary-chart';
 import { ShareLink } from './share-link';
+import { PageHeader } from '../page-header';
 
 const SEVERITY_ORDER = ['severe', 'moderate', 'mild'];
 const rank = (s: string | null) => (s && SEVERITY_ORDER.includes(s) ? SEVERITY_ORDER.indexOf(s) : SEVERITY_ORDER.length);
@@ -32,11 +33,9 @@ export function Catering({ slug }: { slug: string }) {
   if (!data) return <p>{error ? `✕ ${error}` : 'Loading catering…'}</p>;
   return (
     <>
-      {/* The bottom rule the admin layout gives a page's h1, here under the title row so the share controls sit beside it. */}
-      <div className="mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-[18px] max-[600.001px]:mb-[22px] max-[600.001px]:pb-[14px]">
-        <h1 className="m-0!">Catering</h1>
+      <PageHeader title="Catering" description="Dietary groups and allergies of the accepted hackers.">
         <ShareLink slug={slug} shareUrl={data.shareUrl} onChange={(shareUrl) => setData({ ...data, shareUrl })} />
-      </div>
+      </PageHeader>
       <CateringView hackers={data.hackers} />
     </>
   );
@@ -73,15 +72,15 @@ export function CateringView({ hackers }: { hackers: Hacker[] }) {
           {shownGroups.map(({ label, people, shown }) => (
             <GroupCard key={label} label={label} count={people.length} shown={shown.length}>
               <ul className="m-0 list-none p-0 text-sm leading-7 [columns:13rem] [column-gap:24px] max-[600.001px]:[columns:8.5rem] max-[600.001px]:[column-gap:16px]">
-                {shown.map((h) => <li key={h.id} className="break-inside-avoid">{h.name}</li>)}
+                {shown.map((h, index) => <li key={`${h.name}-${index}`} className="break-inside-avoid">{h.name}</li>)}
               </ul>
             </GroupCard>
           ))}
           {shownOther.length > 0 && (
             <GroupCard label="Other" count={other.length} shown={shownOther.length}>
               <ul className="m-0 list-none p-0 text-sm leading-7 [columns:24rem] [column-gap:32px] [&>li]:break-inside-avoid">
-                {shownOther.map((h) => (
-                  <li key={h.id}><span className="font-semibold">{h.name}</span>: <span className="text-muted-foreground">{h.dietaryNotes}</span></li>
+                {shownOther.map((h, index) => (
+                  <li key={`${h.name}-${index}`}><span className="font-semibold">{h.name}</span>: <span className="text-muted-foreground">{h.dietaryNotes}</span></li>
                 ))}
               </ul>
             </GroupCard>
@@ -104,8 +103,8 @@ export function CateringView({ hackers }: { hackers: Hacker[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shownAllergic.map((h) => (
-                <TableRow key={h.id}>
+              {shownAllergic.map((h, index) => (
+                <TableRow key={`${h.name}-${index}`}>
                   <TableCell className="font-semibold">{h.name}</TableCell>
                   <TableCell className="whitespace-normal">{h.allergies}</TableCell>
                   <TableCell className={`capitalize ${h.allergySeverity === 'severe' ? 'font-bold text-[var(--bad,_#f87171)]' : ''}`}>

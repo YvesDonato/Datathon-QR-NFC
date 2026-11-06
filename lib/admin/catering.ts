@@ -11,21 +11,21 @@ type Db = SupabaseClient<Database>;
 const NO_STORE = { 'Cache-Control': 'no-store' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: NO_STORE });
 
-export interface CateringHacker { id: string; name: string; dietaryNotes: string | null; allergies: string | null; allergySeverity: string | null }
+export interface CateringHacker { name: string; dietaryNotes: string | null; allergies: string | null; allergySeverity: string | null }
 
 // §11 (v0.11.39): accepted, real, undeleted hackers' dietary notes and allergies, by name. Never email.
 export async function cateringHackers(db: Db, eventId: string): Promise<CateringHacker[]> {
   // shortcut: PostgREST caps a read at 1000 rows; one event's accepted hackers are a few hundred.
   const { data, error } = await db
     .from('participants')
-    .select('id, first_name, last_name, dietary_notes, allergies, allergy_severity')
+    .select('first_name, last_name, dietary_notes, allergies, allergy_severity')
     .eq('event_id', eventId)
     .eq('status', 'accepted')
     .is('deleted_at', null)
     .eq('is_test', false);
   if (error) throw new Error(`catering load failed (${error.code})`);
   return data
-    .map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim(), dietaryNotes: p.dietary_notes, allergies: p.allergies, allergySeverity: p.allergy_severity }))
+    .map((p) => ({ name: `${p.first_name} ${p.last_name}`.trim(), dietaryNotes: p.dietary_notes, allergies: p.allergies, allergySeverity: p.allergy_severity }))
     .sort((a, b) => a.name.localeCompare(b.name, 'en'));
 }
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { adminUrl, errorText, useApi, useLoad } from '../api';
 import { ConfirmDialog } from '../dialog';
+import { PageHeader } from '../page-header';
 
 interface Board {
   frozenAt: string | null;
@@ -48,16 +49,15 @@ export function Leaderboard({ slug }: { slug: string }) {
 
   const frozen = board?.frozenAt != null;
   return (
-    <div className="grid gap-[16px]">
-      <h1>Leaderboard</h1>
-      <div className="flex flex-wrap items-center gap-[8px]">
+    <div className="grid gap-[24px]">
+      <PageHeader title="Leaderboard" description="Most connections, for the projector. Hackers only see their own rank.">
         <Button type="button" variant="outline" onClick={() => void screen.current?.requestFullscreen()}>
           Full screen
         </Button>
         <Button type="button" variant={frozen ? 'default' : 'outline'} disabled={busy || !board} onClick={() => (frozen ? void setFrozen(false) : setConfirming(true))}>
           {frozen ? 'Unfreeze' : 'Freeze leaderboard'}
         </Button>
-      </div>
+      </PageHeader>
       {error && (
         <Alert className="text-bad" asChild>
           <p role="alert">✕ {error}</p>

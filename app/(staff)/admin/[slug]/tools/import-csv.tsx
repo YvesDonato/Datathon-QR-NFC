@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { SectionLabel } from '@/components/section-label';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useState } from 'react';
 import type { SheetStatus } from '@/lib/domain/sheet';
 import { adminUrl, errorText, useApi } from '../api';
+import { PageHeader } from '../page-header';
 
 // F10 (v0.11.22): the same import as the Sheet bridge (F3), from a CSV export of the Sheet. A dry run
 // shows what would change; nothing is written until Import is pressed, and new people aren't emailed.
@@ -90,10 +90,7 @@ export function ImportCsv({ slug }: { slug: string }) {
 
   return (
     <div className="grid gap-[24px] min-w-0 pb-[32px]">
-      <header className="p-[8px_0px] [&_h1]:m-0 [&_h1]:text-[clamp(1.8rem,_3vw,_2.3rem)] [&_h1]:tracking-[-0.045em]">
-        <SectionLabel>EVENT MANAGEMENT</SectionLabel>
-        <h1>Tools</h1>
-      </header>
+      <PageHeader title="Tools" description="Import applicants from a CSV export of the Sheet." />
 
       <section aria-labelledby="import-csv" className="grid gap-[14px] max-w-[640px] min-w-0 p-[20px] [border-width:1px] [border-style:solid] [border-color:var(--line)] rounded-lg [background:var(--card)] max-[600.001px]:p-[16px] [&_.tw-admin-field]:text-[11px] [&_.tw-admin-field]:font-semibold [&_.tw-admin-input]:min-h-[44px] [&_.tw-admin-check_input]:w-[16px] [&_.tw-admin-check_input]:h-[16px] [&_.tw-admin-check_input]:[accent-color:var(--accent)]">
         <div>

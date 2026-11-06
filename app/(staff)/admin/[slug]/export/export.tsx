@@ -1,10 +1,10 @@
 'use client';
 
-import { SectionLabel } from '@/components/section-label';
 import { Label } from '@/components/ui/label';
 
 import { useState } from 'react';
 import { adminUrl } from '../api';
+import { PageHeader } from '../page-header';
 
 // §11 / §13: CSVs are built server-side by toCsv() (I-13); these are plain download links.
 export function Export({ slug }: { slug: string }) {
@@ -19,16 +19,7 @@ export function Export({ slug }: { slug: string }) {
           [&_a:focus-visible]:[outline-offset:3px] [&_input:focus-visible]:[outline:2px_solid_var(--accent)]
 
           [&_input:focus-visible]:[outline-offset:3px]">
-      <header className="p-[8px_0px] [&_h1]:m-0 [&_h1]:text-[clamp(1.8rem,_3vw,_2.3rem)] [&_h1]:tracking-[-0.045em]">
-        <div>
-          <SectionLabel>EVENT MANAGEMENT</SectionLabel>
-          <h1>Export data</h1>
-          <p className="copy m-[7px_0px_0px] text-muted-foreground text-[0.88rem] leading-[1.65]">
-            Download your event data as CSV files for reporting, analysis,
-            and record keeping.
-          </p>
-        </div>
-      </header>
+      <PageHeader title="Export data" description="Download your event data as CSV files for reporting, analysis, and record keeping." />
 
       <div className="flex items-start gap-[12px] max-w-[1100px] p-[15px_17px] [border-width:1px] [border-style:solid]
 

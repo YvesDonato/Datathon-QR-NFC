@@ -12,6 +12,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { useCallback, useState } from 'react';
 import { adminUrl, errorText, useApi, useLoad, type ApiResult } from '../api';
 import { ConfirmDialog } from '../dialog';
+import { PageHeader } from '../page-header';
 
 interface Track {
   id: string;
@@ -74,21 +75,7 @@ export function Teams({ slug }: { slug: string }) {
 
   return (
     <>
-      <header className="flex items-start justify-between gap-[24px] mb-[28px] pb-[24px] [border-bottom-width:1px]
-
-          [border-bottom-style:solid] [border-bottom-color:var(--line)] max-[700.001px]:gap-[12px]
-
-          max-[700.001px]:flex-col [&_h1]:m-[0px_0px_8px] [&_h1]:text-[clamp(30px,_3vw,_40px)]
-
-          [&_h1]:font-extrabold [&_h1]:tracking-[-0.045em] [&_.tw-admin-muted]:max-w-[560px]
-
-          [&_.tw-admin-muted]:m-0 [&_.tw-admin-muted]:leading-[1.6]">
-        <div>
-          <SectionLabel>EVENT MANAGEMENT</SectionLabel>
-          <h1>Teams &amp; tracks</h1>
-          <p className="copy tw-admin-muted text-muted-foreground text-[12px] leading-[1.7]">Organize hackers, manage tracks, and monitor team formation.</p>
-        </div>
-        <div className="flex items-center gap-[8px] pt-[8px] max-[700.001px]:pt-0">
+      <PageHeader title="Teams & tracks" description="Organize hackers, manage tracks, and monitor team formation.">
           <Badge className="tw-admin-badge inline-flex items-center justify-center w-[fit-content] p-[5px_9px] [border-width:1px]
 
           [border-style:solid] [border-top-color:var(--line)] [border-right-color:var(--line)]
@@ -98,8 +85,7 @@ export function Teams({ slug }: { slug: string }) {
           [background:var(--raised)] text-fg text-[11px] font-semibold leading-[1.35] whitespace-nowrap
           max-w-full
  [font-family:inherit]">{data.teamsOpen ? 'Formation open' : 'Formation closed'}</Badge>
-        </div>
-      </header>
+      </PageHeader>
       {message && (
         <Alert className={`flex items-start gap-[12px] m-[0px_0px_14px] p-[15px_17px] [border-width:1px] [border-style:solid]
                 [border-top-color:var(--line)] [border-right-color:var(--line)] [border-bottom-color:var(--line)]

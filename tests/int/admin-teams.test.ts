@@ -62,6 +62,9 @@ describe('teams admin (SPEC §11, v0.7)', () => {
     expect(new Set((obj(obj(renamed.body).team) as { trackIds: string[] }).trackIds)).toEqual(new Set([ai, hw]));
     // Another event's track changes nothing.
     expect((await c.call('updateTeam', org, { slug: f.slug, id: team.id }, { method: 'PATCH', body: { trackIds: [e2Track] } })).status).toBe(404);
+    expect((await c.call('updateTeam', org, { slug: f.slug, id: team.id }, { method: 'PATCH', body: { name: 'Renamed team', trackIds: [e2Track] } })).status).toBe(404);
+    expect((await f.pool.query('select name from teams where id = $1', [team.id])).rows).toEqual([{ name: 'Data Wizards 2' }]);
+    expect(new Set((await f.pool.query<{ track_id: string }>('select track_id from team_tracks where team_id = $1', [team.id])).rows.map((t) => t.track_id))).toEqual(new Set([ai, hw]));
 
     // Members: four fit, a fifth is refused; another event's person or team is not found.
     for (const p of [f.p.A, f.p.B, f.p.Rv, f.p.N]) expect((await setTeam(p, team.id)).status).toBe(200);
