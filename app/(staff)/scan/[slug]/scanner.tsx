@@ -29,8 +29,11 @@ import { CAMERA_KEY, checkpointKey, INPUT_KEY, KIND_LABEL, NFC_KEY, readPref, wr
 import { UndoDialog } from './undo-dialog';
 
 type LinkTarget = Pick<Row, 'id' | 'displayName'>;
-/** mustLink (v0.12.1): a door ADMIT on a phone with Web NFC stays until their badge is linked (§10.2). */
-type Shown = { view: ResultView; id: number; shownAt: number; mustLink?: LinkTarget };
+/** mustLink (v0.12.1): a door ADMIT on a phone with Web NFC stays until their badge is linked (§10.2); linked: it was. */
+type Shown = { view: ResultView; id: number; shownAt: number; mustLink?: LinkTarget; linked?: boolean };
+
+// v0.12.2: how long a check-in's "✓ Badge linked" stays before scanning resumes (a tap skips it).
+const LINKED_MS = 1500;
 
 type CameraState = 'starting' | 'ready' | CameraFailure;
 
@@ -86,8 +89,8 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
   const [peopleOpen, setPeopleOpen] = useState(false);
   const peopleButton = useRef<HTMLButtonElement>(null);
   const [result, setResult] = useState<Shown | null>(null);
-  // v0.12.1: the door ADMIT whose badge link is open in the sheet; it comes back unless the link answers LINKED.
-  const pendingAdmit = useRef<Shown | null>(null);
+  // v0.12.2: the person a waiting door ADMIT is reading a badge for (no sheet), until their check-in finishes.
+  const admitRow = useRef<LinkTarget | null>(null);
   const [busy, setBusy] = useState(false);
   const [networkDown, setNetworkDown] = useState(false);
   const [camera, setCamera] = useState<CameraState>('starting');
@@ -173,6 +176,14 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     // v0.12.1 (owner's decision): check-in ends only once their badge is linked, so this ADMIT has no timer.
     const mustLink = view.linkable && nfcSupported() ? { id: view.linkable.id, displayName: view.linkable.name } : undefined;
     setResult({ view: mustLink ? { ...view, dismiss: 'tap' } : view, id, shownAt: performance.now(), mustLink });
+    if (mustLink) {
+      // v0.12.2 (owner's request): no Link badge button: the ADMIT reads their badge straight away (§10.2).
+      setLinking(mustLink);
+      linkRow.current = mustLink;
+      admitRow.current = mustLink;
+      linkAttempt.current = null;
+      setLinkState({ kind: 'waiting' });
+    }
     playFeedback(view.sound);
     if (view.dismiss !== 'tap' && !mustLink) {
       setTimeout(() => setResult((r) => (r?.id === id ? null : r)), view.dismiss.autoMs);
@@ -235,11 +246,12 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     }
     const notice = linkNotice(code, uid, row.displayName, write);
     if (code === 'LINKED') {
-      // Check-in finished: the waiting ADMIT doesn't come back, including when the sheet was closed while saving.
-      if (pendingAdmit.current?.mustLink?.id === row.id) pendingAdmit.current = null;
-      setResult((r) => (r?.mustLink?.id === row.id ? null : r));
+      // Check-in finished: the ADMIT says so briefly, then clears like any green (the effect below).
+      setResult((r) => (r?.mustLink?.id === row.id ? { ...r, linked: true, view: { ...r.view, detail: notice.text, dismiss: { autoMs: LINKED_MS } } } : r));
+    } else if (admitRow.current === row) {
+      linkAttempt.current = null; // a waiting check-in takes the next badge tap
     }
-    if (linkRow.current === row) setLinkState({ kind: 'result', notice });
+    if (linkRow.current === row) setLinkState({ kind: 'result', notice, linked: code === 'LINKED' });
     else setNotice(notice.text); // the sheet was closed while saving: still say what happened
   }, [slug, toLogin, writeBadge]);
 
@@ -264,8 +276,11 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
       const { serial } = tag;
       observeTag(serial);
       if (linking) {
+        const seen = linkTaps.current.get(serial);
         linkTaps.current.set(serial, Date.now());
         if (linkAttempt.current !== null) return;
+        // A waiting check-in: Android repeating a badge held still (e.g. one just refused) isn't a new tap.
+        if (admitRow.current === linking && seen !== undefined && Date.now() - seen < DEDUPE_WINDOW_MS) return;
         const uid = normalizeUid(serial);
         if (!uid) return setLinkState({ kind: 'waiting', unreadable: true });
         linkAttempt.current = serial;
@@ -341,6 +356,14 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     };
   }, [mode, linking]);
 
+  // A10: on a real phone NFC reads only arrive with the camera off, so the camera is released before the reader
+  // starts (synchronously, so a tap's user gesture still starts it), not later when the camera effect cleans up.
+  const startNfc = nfc.start;
+  const startReader = useCallback(() => {
+    void scannerRef.current?.stop();
+    return startNfc();
+  }, [startNfc]);
+
   function startLink(row: LinkTarget) {
     setSearchOpen(false);
     setNotice(null);
@@ -348,14 +371,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     linkRow.current = row;
     setLinkState({ kind: 'waiting' });
     linkAttempt.current = null;
-    if (nfc.state !== 'on') void nfc.start(); // keep Chrome's user gesture; the saved input mode stays as it was
-  }
-
-  // v0.11.40 (§10.2): Link badge on a door ADMIT; this tap is the gesture Chrome needs to start the reader.
-  function linkFromResult(shown: Shown & { mustLink: LinkTarget }) {
-    pendingAdmit.current = shown;
-    setResult(null);
-    startLink(shown.mustLink);
+    if (nfc.state !== 'on') void startReader(); // keep Chrome's user gesture; the saved input mode stays as it was
   }
 
   function openSearch(linkOnly: boolean) {
@@ -364,27 +380,64 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
   }
 
   // Always allowed, even while saving: Chrome closes the dialog itself on a second Back/Escape anyway.
-  function closeLink() {
+  const stopReader = nfc.stop;
+  const closeLink = useCallback(() => {
     if (!linkRow.current) return; // already closed (Cancel, then the dialog's own close event)
     cancelWrite();
     linkRow.current = null;
+    admitRow.current = null;
     if (mode === 'camera') {
-      nfc.stop();
+      stopReader();
       setCamera('starting');
       setCameraReadyAt(null);
     }
     setLinking(null);
-    // v0.12.1: closed before LINKED (Cancel, a taken badge, a failed link): back to the waiting ADMIT.
-    const admit = pendingAdmit.current;
-    pendingAdmit.current = null;
-    if (admit) setResult({ ...admit, shownAt: performance.now() });
-    else requestAnimationFrame(() => searchButton.current?.focus());
-  }
+    requestAnimationFrame(() => searchButton.current?.focus());
+  }, [cancelWrite, mode, stopReader]);
+
+  // v0.12.2: Chrome starts the reader without a tap only once this site may use NFC, so the permission is read when
+  // the page opens (and followed), letting a waiting check-in start reading the moment it appears.
+  const [nfcAllowed, setNfcAllowed] = useState(false);
+  const nfcSupportedHere = nfc.supported;
+  useEffect(() => {
+    if (!nfcSupportedHere) return;
+    let status: PermissionStatus | null = null;
+    void navigator.permissions
+      .query({ name: 'nfc' as PermissionName })
+      .then((p) => {
+        status = p;
+        setNfcAllowed(p.state === 'granted');
+        p.onchange = () => setNfcAllowed(p.state === 'granted');
+      })
+      .catch(() => undefined);
+    return () => {
+      if (status) status.onchange = null;
+    };
+  }, [nfcSupportedHere]);
+
+  // v0.12.2: a waiting check-in reads their badge at once (the camera is already off, A10); the first time on a
+  // phone, or after a reader error, the ADMIT offers Start badge reader instead (that tap lets Chrome ask).
+  const needsReaderTap = !nfcAllowed || !!nfc.error;
+  const autoReadFor = result?.mustLink && !result.linked && nfc.state === 'off' && !needsReaderTap ? result.id : null;
+  useEffect(() => {
+    if (autoReadFor !== null) void startReader();
+  }, [autoReadFor, startReader]);
+
+  // v0.12.2: linked: the check-in is done; after the confirmation, scanning resumes (camera back in Camera mode).
+  const linkedResult = result?.linked ? result.id : null;
+  useEffect(() => {
+    if (linkedResult === null) return;
+    const t = setTimeout(() => {
+      setResult((r) => (r?.id === linkedResult ? null : r));
+      closeLink();
+    }, LINKED_MS);
+    return () => clearTimeout(t);
+  }, [linkedResult, closeLink]);
 
   function chooseInput(next: InputMode) {
     if (next === mode) return;
     if (next === 'nfc') {
-      void nfc.start(); // this tap is the user gesture Chrome needs to start NFC
+      void startReader(); // this tap is the user gesture Chrome needs to start NFC
     } else {
       nfc.stop();
       setCamera('starting');
@@ -410,6 +463,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
 
   function dismiss() {
     const action = result?.view.action;
+    if (result?.linked) closeLink(); // a tap skips the "✓ Badge linked" confirmation
     setResult(null);
     if (action === 'pick-checkpoint') openPicker();
     if (action === 'manual-search') openSearch(false);
@@ -582,13 +636,13 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
           }}
         />
       )}
-      {linking && (
+      {linking && linking !== result?.mustLink && (
         <LinkSheet
           name={linking.displayName}
           state={linkState}
           readerState={nfc.state}
           readerError={nfc.error}
-          onStart={() => void nfc.start()}
+          onStart={() => void startReader()}
           onClose={closeLink}
         />
       )}
@@ -612,7 +666,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
           view={result.view}
           shownAt={result.shownAt}
           onDismiss={dismiss}
-          onLinkBadge={result.mustLink ? () => result.mustLink && linkFromResult({ ...result, mustLink: result.mustLink }) : undefined}
+          link={result.mustLink && !result.linked ? { state: linkState, readerState: nfc.state, readerError: nfc.error, needsTap: needsReaderTap, onStart: () => void startReader() } : undefined}
         />
       )}
     </main>

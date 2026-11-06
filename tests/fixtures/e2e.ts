@@ -49,8 +49,12 @@ export async function installFakeNfc(page: Page, writeMode: 'success' | 'fail' |
     // scanning, and its taps then go nowhere (the real-phone bug behind T-NFC-10's GC case).
     const readers = new Set<WeakRef<EventTarget>>();
     const writes: unknown[] = [];
+    // A10: live camera tracks at each scan() (with trackCameraStreams; -1 without), since a running camera can block reads.
+    const startsWithCamera: number[] = [];
     class FakeNDEFReader extends EventTarget {
       async scan(options: { signal?: AbortSignal } = {}): Promise<void> {
+        const streams = (w.__streams as MediaStream[] | undefined) ?? null;
+        startsWithCamera.push(streams ? streams.flatMap((s) => s.getTracks()).filter((t) => t.readyState === 'live').length : -1);
         const ref = new WeakRef<EventTarget>(this);
         readers.add(ref);
         options.signal?.addEventListener('abort', () => readers.delete(ref));
@@ -69,6 +73,7 @@ export async function installFakeNfc(page: Page, writeMode: 'success' | 'fail' |
     w.__nfcWriteAborted = false;
     w.NDEFReader = FakeNDEFReader;
     w.__nfcWrites = writes;
+    w.__nfcStartsWithCamera = startsWithCamera;
     w.__nfcTap = (serialNumber: string, urls: string[]) => {
       const records = urls.map((u) => ({ recordType: 'url', data: new DataView(new TextEncoder().encode(u).buffer) }));
       for (const r of readers) r.deref()?.dispatchEvent(Object.assign(new Event('reading'), { serialNumber, message: { records } }));
@@ -81,7 +86,20 @@ export async function installFakeNfc(page: Page, writeMode: 'success' | 'fail' |
   }, writeMode);
 }
 
-type NfcWindow = { __nfcTap(serial: string, urls: string[]): void; __nfcUnreadable(): void; __nfcActive(): number; __nfcWrites: unknown[] };
+type NfcWindow = { __nfcTap(serial: string, urls: string[]): void; __nfcUnreadable(): void; __nfcActive(): number; __nfcWrites: unknown[]; __nfcStartsWithCamera: number[] };
+
+/** Live camera tracks at each reader start, in order (needs trackCameraStreams). */
+export async function nfcStartsWithCamera(page: Page): Promise<number[]> {
+  return page.evaluate(() => (window as unknown as NfcWindow).__nfcStartsWithCamera);
+}
+
+/** Chrome's `nfc` permission for the site ('granted': the reader may start without a tap). Before goto. */
+export async function stubNfcPermission(page: Page, state: PermissionState): Promise<void> {
+  await page.addInitScript((state) => {
+    const query = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (d) => ((d as { name: string }).name === 'nfc' ? Promise.resolve({ state } as PermissionStatus) : query(d));
+  }, state);
+}
 
 /** Readers currently scanning (started and not aborted). */
 export async function nfcActive(page: Page): Promise<number> {
