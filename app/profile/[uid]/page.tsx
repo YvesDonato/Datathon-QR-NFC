@@ -217,7 +217,7 @@ function Connect(props: { name: string | null; state: ConnectionState }) {
     case 'SENT':
       return null; // owner's request (v0.12.4): the "◌ Waiting for {name}" chip says it
     case 'MUTUAL':
-      return <p role="status" className={`${box} m-0 text-ok`}>✓ You’re connected{name ? ` with ${name}` : ''}.</p>;
+      return null; // the "● Connected" chip beside their name says it (owner's polish request, v0.12.4)
     case 'NOT_CHECKED_IN':
       return <p className={`${box} m-0 text-muted-foreground`}>Check in at the door first, then you can connect.</p>;
     case 'CLOSED':

@@ -16,6 +16,7 @@ import { isJsonContentType } from '@/lib/http/content-type';
 import { syncSheet } from '@/lib/ingest/sync';
 import { withinLimit } from '@/lib/pass/handlers';
 import { cateringHackers, cateringToken, cateringUrl } from './catering';
+import { hackerConnections, removeConnection } from './connection-admin';
 import { deleteJudge, importJudges, linkJudgeBadge, listJudges, setJudgeLinkedin, unlinkJudgeBadge } from './judges';
 import { normalizeLinkedIn, normalizeUid } from '@/lib/domain/badge';
 import { parseJudgesCsv } from '@/lib/domain/judges';
@@ -59,6 +60,7 @@ const uuid = (v: string | undefined) => z.uuid().safeParse(v).data ?? null;
 const judgesImportBody = z.object({ csv: z.string().max(4_000_000), dryRun: z.boolean() }).strict();
 const judgeUpdateBody = z.object({ linkedin: z.string().max(300) }).strict();
 const judgeBadgeBody = z.object({ uid: z.string().max(40) }).strict();
+const connectionRemoveBody = z.object({ a: z.uuid(), b: z.uuid() }).strict().refine((v) => v.a !== v.b);
 
 const metricsSchema = z.object({
   accepted: z.number(),
@@ -532,6 +534,28 @@ export function createAdminApi(deps: AdminDeps) {
       if (error) throw new Error(`queue_event_eve failed (${error.code})`);
       if (!body.data.dryRun && data > 0) deps.scheduleDrain(deps.drain);
       return json({ count: data });
+    },
+
+    // GET /api/admin/[slug]/connections?participantId=  (F17, v0.12.4, owner's decision: one hacker's connections)
+    async listConnections(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const id = uuid(new URL(request.url).searchParams.get('participantId') ?? undefined);
+      if (!id) return badRequest();
+      const connections = await hackerConnections(db, g.eventId, id);
+      return connections ? json({ connections }) : notFound();
+    },
+
+    // DELETE /api/admin/[slug]/connections  { a, b }: removes both taps between two hackers (F17, v0.12.4)
+    async removeConnection(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const body = connectionRemoveBody.safeParse(await readJson(request));
+      if (!body.success) return badRequest();
+      const removed = await removeConnection(db, g.eventId, body.data.a, body.data.b);
+      if (removed === 0) return notFound();
+      await audit(g.eventId, g.userId, 'connection.remove', body.data.a, { taps: removed }); // ids and a count only (I-11)
+      return json({ removed });
     },
 
     // GET /api/admin/[slug]/judges (§11 Judges, v0.12.4)

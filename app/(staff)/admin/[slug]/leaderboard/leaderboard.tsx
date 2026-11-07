@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { adminUrl, errorText, useApi, useLoad } from '../api';
 import { ConfirmDialog } from '../dialog';
 import { PageHeader } from '../page-header';
+import { ManageConnections } from './manage-connections';
 
 interface Board {
   frozenAt: string | null;
@@ -97,6 +98,7 @@ export function Leaderboard({ slug }: { slug: string }) {
           </ol>
         )}
       </section>
+      <ManageConnections slug={slug} onChange={() => void load()} />
       {confirming && (
         <ConfirmDialog
           title="Freeze the leaderboard?"

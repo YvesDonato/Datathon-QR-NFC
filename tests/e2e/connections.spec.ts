@@ -72,8 +72,8 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await expect(bPage.getByText('Ada tapped your badge. Tap theirs with your phone to connect back.')).toBeVisible();
   await expect(bPage.getByTestId('connection-chip')).toHaveText('↩ Tapped you');
   await bPage.goto(`/profile/${aBadge}?tap`); // Ben taps Ada's badge back
-  await expect(bPage.getByText('✓ You’re connected with Ada.')).toBeVisible();
   await expect(bPage.getByTestId('connect-burst')).toHaveAttribute('data-kind', 'mutual');
+  await expect(bPage.getByText('✓ You’re connected with Ada.')).toHaveCount(0); // the chip says it (v0.12.4 polish)
   await expect(bPage.getByText('+1 connection')).toBeVisible();
   await expect(bPage.getByTestId('connection-chip')).toHaveText('● Connected');
   expect(await taps()).toBe(2);

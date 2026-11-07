@@ -22,8 +22,11 @@ export function ConnectBurst({ kind, name }: { kind: 'mutual' | 'sent'; name: st
   const them = (name ?? 'them').length > 12 ? `${(name ?? 'them').slice(0, 11)}…` : (name ?? 'them');
   const other = mutual ? 'var(--accent)' : STAR;
   return (
-    <div aria-hidden="true" className="relative grid justify-items-center gap-[4px] pt-[4px]" data-testid="connect-burst" data-kind={kind}>
-      <svg viewBox="0 20 280 76" className="w-full max-w-[330px] h-auto overflow-visible">
+    <div aria-hidden="true" data-testid="connect-burst" data-kind={kind}
+      className="relative grid justify-items-center gap-[10px] p-[22px_16px_16px] rounded-lg overflow-hidden
+        [border:1px_solid_color-mix(in_srgb,var(--accent)_24%,var(--line))]
+        [background:radial-gradient(120%_100%_at_50%_0%,color-mix(in_srgb,var(--accent)_11%,transparent),transparent_72%)]">
+      <svg viewBox="0 30 280 64" className="w-full max-w-[300px] h-auto overflow-visible">
         <defs>
           {/* userSpaceOnUse: a horizontal line has a zero-height box, and a box-relative filter region would hide it. */}
           <filter id="connect-glow" filterUnits="userSpaceOnUse" x="-40" y="-20" width="360" height="150">
@@ -71,27 +74,30 @@ export function ConnectBurst({ kind, name }: { kind: 'mutual' | 'sent'; name: st
         <motion.g initial={reduce ? false : { x: -46, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={at(0)}>
           <circle cx="60" cy="52" r="11" fill="var(--bg)" stroke="var(--accent)" strokeWidth="2" filter="url(#connect-glow)" />
           <circle cx="60" cy="52" r="4.2" fill="var(--accent)" />
-          <text x="60" y="84" textAnchor="middle" className="fill-[var(--fg)] font-mono text-[11px] opacity-70">you</text>
+          <text x="60" y="84" textAnchor="middle" className="fill-[var(--fg)] font-mono text-[9.5px] uppercase tracking-[0.14em] opacity-60">you</text>
         </motion.g>
         <motion.g initial={reduce ? false : { x: 46, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={at(0.08)}>
           <motion.circle cx="220" cy="52" r="11" fill="var(--bg)" strokeWidth="2" filter="url(#connect-glow)"
             initial={reduce ? false : { stroke: STAR }} animate={{ stroke: other }} transition={at(mutual ? 1.0 : 0, 0.3)} />
           <motion.circle cx="220" cy="52" r="4.2" initial={reduce ? false : { fill: STAR }} animate={{ fill: other }} transition={at(mutual ? 1.0 : 0, 0.3)} />
-          <text x="220" y="84" textAnchor="middle" className="fill-[var(--fg)] font-mono text-[11px] opacity-70">{them}</text>
+          <text x="220" y="84" textAnchor="middle" className="fill-[var(--fg)] font-mono text-[9.5px] uppercase tracking-[0.14em] opacity-60">{them}</text>
         </motion.g>
       </svg>
 
-      <motion.p className="m-0 font-mono text-[13px] font-semibold tracking-[0.06em] text-accent"
+      <motion.p className="m-0 flex flex-wrap items-center justify-center gap-[8px] font-mono text-[12.5px] font-semibold tracking-[0.08em] text-accent"
         initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={at(mutual ? 1.5 : 0.9, 0.4)}>
-        {mutual ? '> link established' : '> signal sent'}
-        {!reduce && <motion.span className="ml-[2px]" animate={{ opacity: [1, 0, 1] }} transition={{ duration: 1, repeat: Infinity }}>▎</motion.span>}
+        <span>
+          {mutual ? '> link established' : '> signal sent'}
+          {!reduce && <motion.span className="ml-[2px]" animate={{ opacity: [1, 0, 1] }} transition={{ duration: 1, repeat: Infinity }}>▎</motion.span>}
+        </span>
+        {/* Inline after the line, so it never covers a node whatever the width. */}
+        {mutual && (
+          <motion.span className="rounded-full px-[9px] py-[2px] text-[11px] font-bold tracking-[0.02em] text-[var(--accent-ink)] bg-[var(--accent)] shadow-[0_0_14px_rgba(52,211,153,0.45)]"
+            initial={reduce ? false : { scale: 0, opacity: 0 }} animate={{ scale: [0, 1.15, 1], opacity: 1 }} transition={at(1.75, 0.45)}>
+            +1 connection
+          </motion.span>
+        )}
       </motion.p>
-      {mutual && (
-        <motion.span className="absolute right-0 top-0 rounded-full px-[10px] py-[3px] text-[12px] font-bold text-[var(--accent-ink)] bg-[var(--accent)] shadow-[0_0_18px_rgba(52,211,153,0.55)]"
-          initial={reduce ? false : { scale: 0, opacity: 0 }} animate={{ scale: [0, 1.18, 1], opacity: 1 }} transition={at(1.6, 0.5)}>
-          +1 connection
-        </motion.span>
-      )}
     </div>
   );
 }
