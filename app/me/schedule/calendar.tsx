@@ -177,7 +177,9 @@ export function ScheduleCalendar({ sections, initialNow, timezone, eventStartsAt
                   const time = `${slot.start}${slot.end ? ` to ${slot.end}` : ''}`;
                   const category = categories.find(c => c.id === slot.category)!;
                   const length = slot.endMinute - slot.topMinute;
-                  const short = length < 60 || (length < 90 && slot.width < 0.3);
+                  const short = length < 60;
+                  // An hour-long card keeps its time unless it is too narrow to fit it under the title (a phone's food column or a side-by-side lane).
+                  const tight = length < 90 ? '@max-[5rem]:sr-only' : '';
                   const inset = slot.depth * DEPTH_INSET;
                   const nudge = slot.nudged ? NUDGE : 0;
                   const colour = slot.state === 'past' ? 'bg-[#f1f3f4] text-[#5f6368] border-[#dadce0] border-l-[3px] border-l-[var(--category)]' : category.classes;
@@ -193,8 +195,8 @@ export function ScheduleCalendar({ sections, initialNow, timezone, eventStartsAt
                       <strong className={`text-[13px] leading-[1.25] font-bold @max-[8.5rem]:text-xs ${length <= 30 ? 'block truncate' : 'line-clamp-2'}`}>
                         {cardTitle(title, slot.category)}
                       </strong>
-                      {subtitle.length > 0 && <span className={`${details} block ${short ? 'sr-only' : 'line-clamp-1 @max-[8.5rem]:hidden'}`}>{subtitle.join(' — ')}</span>}
-                      <span className={`${details} block ${short ? 'sr-only' : 'line-clamp-2'}`}>
+                      {subtitle.length > 0 && <span className={`${details} block ${short ? 'sr-only' : `line-clamp-1 ${tight ? '@max-[11rem]:hidden' : '@max-[8.5rem]:hidden'}`}`}>{subtitle.join(' — ')}</span>}
+                      <span className={`${details} block ${short ? 'sr-only' : `line-clamp-2 ${tight}`}`}>
                         {[time, compactTime(slot.start, slot.end)].map((when, n) => <span key={n} className={n ? 'hidden @max-[8.5rem]:inline' : '@max-[8.5rem]:hidden'}>
                           {when}{slot.place && <> · <b className="font-bold">{slot.place}</b></>}
                         </span>)}
