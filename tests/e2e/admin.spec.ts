@@ -82,14 +82,15 @@ test('T-ADM-01 (pages): the organizer gets 200 on every /admin page', async ({ r
   }
 });
 
-test('T-ADM-06: door closed 20 min before starts_at shows a warning; opening the door clears it', async ({ page }) => {
+// v0.12.4 (owner's request): no "Check-in is closed" warning; closing check-in mid-event is deliberate.
+test('T-ADM-06: door closed 20 min before starts_at shows no warning; opening the door works', async ({ page }) => {
   await f.pool.query(`update events set starts_at = now() + interval '20 minutes' where id = $1`, [f.e1.id]);
   await f.pool.query(`update checkpoints set is_open = false where id = $1`, [f.cp.D]);
 
   await page.goto(`/admin/${f.slug}`);
-  const warning = page.getByRole('alert').filter({ hasText: 'Check-in is closed' });
-  await expect(warning).toBeVisible();
+  const warning = page.getByText(/Check-in is closed/);
   await expect(page.getByTestId('kpi-accepted')).toHaveText(/Accepted\s*4/); // A, B, Rv, N (T is a test participant, §13)
+  await expect(warning).toHaveCount(0);
 
   await page.goto(`/admin/${f.slug}/checkpoints`);
   const door = page.getByRole('row', { name: /Door/ });

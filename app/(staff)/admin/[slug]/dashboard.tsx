@@ -23,7 +23,7 @@ interface DashboardData {
   sessionRanking: Array<{ id: string; name: string; liveScans: number; capacity: number | null }>;
   arrivals: ArrivalBucket[];
   outbox: { pending: number; failed: number };
-  alerts: { doorClosed: boolean; notFound: Array<{ staffUserId: string; displayName: string | null; count: number }> };
+  alerts: { notFound: Array<{ staffUserId: string; displayName: string | null; count: number }> };
 }
 
 const POLL_MS = 10_000; // SPEC §11
@@ -75,21 +75,6 @@ export function Dashboard({ slug }: { slug: string }) {
 
           [&&]:[background:color-mix(in_srgb,_#fbbf24_6%,_var(--card))]" asChild role="status"><p  role="status">
           ! Couldn’t refresh: {error} Showing data from {formatEventDateTime(data.generatedAt, tz)}.
-        </p></Alert>
-      )}
-      {data.alerts.doorClosed && (
-        <Alert className="flex items-start gap-[12px] m-[0px_0px_14px] p-[15px_17px] [border-width:1px] [border-style:solid]
-
-          [border-top-color:var(--line)] [border-right-color:var(--line)] [border-bottom-color:var(--line)]
-
-          [border-left-color:var(--line)] rounded-md [background:var(--card)] text-fg text-[13px]
-
-          leading-[1.65] [overflow-wrap:anywhere]
-
-          [&&]:[border-color:color-mix(in_srgb,_var(--bad,_#f87171)_40%,_var(--line))]
-
-          [&&]:[background:color-mix(in_srgb,_#f87171_6%,_var(--card))]" asChild><p  role="alert">
-          ⚠ Check-in is closed and the event starts {formatEventDateTime(data.event.startsAt, tz)}. Open it on the Checkpoints tab.
         </p></Alert>
       )}
       {data.alerts.notFound.map((a) => (

@@ -70,7 +70,7 @@ describe('dashboard analytics (SPEC §13)', () => {
       ],
       arrivals: [{ arrivals: 3 }],
       outbox: { pending: 1, failed: 0 },
-      alerts: { doorClosed: false, notFound: [] },
+      alerts: { notFound: [] },
     });
   });
 

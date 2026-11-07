@@ -6,7 +6,7 @@ import { requireStaffBySlug } from '@/lib/auth/staff';
 import { staffNames as sharedStaffNames } from '@/lib/db/staff-names';
 import type { Database, Json } from '@/lib/db/types.gen';
 import { parseCsv, toCsv } from '@/lib/domain/csv';
-import { bucketLabel, doorClosedWarning } from '@/lib/domain/dashboard';
+import { bucketLabel } from '@/lib/domain/dashboard';
 import { formatEventDateTime } from '@/lib/domain/event-time';
 import { normalizeEmail, toSearchText } from '@/lib/domain/normalize';
 import { parseSheetId } from '@/lib/domain/sheet';
@@ -253,7 +253,6 @@ export function createAdminApi(deps: AdminDeps) {
         fill: c.capacity ? round4(c.liveScans / c.capacity) : null,
         ...(c.kind === 'meal' && { uptake: m.checkedIn ? round4(c.liveScans / m.checkedIn) : null }),
       }));
-      const door = m.checkpoints.find((c) => c.kind === 'door');
       return json({
         event: { name: event.name, startsAt: event.starts_at, endsAt: event.ends_at, timezone: event.timezone },
         generatedAt: now().toISOString(),
@@ -272,7 +271,6 @@ export function createAdminApi(deps: AdminDeps) {
         }),
         outbox: m.outbox,
         alerts: {
-          doorClosed: doorClosedWarning({ now: now(), startsAt: event.starts_at, endsAt: event.ends_at, doorOpen: door?.isOpen ?? false }),
           notFound: m.notFound,
         },
       });
