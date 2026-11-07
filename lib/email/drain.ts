@@ -8,6 +8,7 @@ import { nextAttempt, sanitizeError } from '@/lib/domain/outbox';
 import { generateToken, passToken, sha256hex } from '@/lib/domain/token';
 import { renderQrPng } from '@/lib/qr/render';
 import { ProviderError, type EmailMessage, type EmailProvider } from './provider';
+import { renderEventEveEmail } from './templates/event-eve';
 import { renderPassEmail, type RenderedEmail } from './templates/pass';
 import { renderProfileReminderEmail } from './templates/profile-reminder';
 import { renderRsvpEmail } from './templates/rsvp';
@@ -202,6 +203,9 @@ async function participantEmail(opts: DrainOptions, row: OutboxRow): Promise<Out
     // F14 (v0.9): only while their profile still isn't finished.
     if (p.emergency_name !== null && p.overnight !== null && p.team_status !== null) return null;
     email = renderProfileReminderEmail({ firstName: p.first_name, event: event.name, appOrigin: opts.appOrigin });
+  } else if (row.kind === 'event_eve') {
+    // v0.12.3: the "See you tomorrow" check-in details; still accepted (checked above), no token.
+    email = renderEventEveEmail({ firstName: p.first_name, event: event.name, appOrigin: opts.appOrigin });
   } else if (row.kind === 'pass_issued' || row.kind === 'pass_reissued') {
     // 2. Issue the pass. issue_pass() commits in its own transaction BEFORE the send (I-10).
     const passId = randomUUID();

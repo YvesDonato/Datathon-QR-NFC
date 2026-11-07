@@ -51,13 +51,31 @@ export async function installFakeNfc(page: Page, writeMode: 'success' | 'fail' |
     const writes: unknown[] = [];
     // A10: live camera tracks at each scan() (with trackCameraStreams; -1 without), since a running camera can block reads.
     const startsWithCamera: number[] = [];
+    // Chrome on Android after a successful write keeps its connection to that tag, and new taps are missed until reader
+    // mode goes off and on: no reader for 500 ms (Chromium NfcImpl's DELAY_TO_DISABLE_READER_MODE_MS), or the page
+    // hidden, as when the owner left the scanner and came back (v0.12.2).
+    let deaf = false;
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    const stopped = () => {
+      if (readers.size > 0) return;
+      clearTimeout(idle);
+      idle = setTimeout(() => {
+        if (readers.size === 0) deaf = false;
+      }, 500);
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) deaf = false;
+    });
     class FakeNDEFReader extends EventTarget {
       async scan(options: { signal?: AbortSignal } = {}): Promise<void> {
         const streams = (w.__streams as MediaStream[] | undefined) ?? null;
         startsWithCamera.push(streams ? streams.flatMap((s) => s.getTracks()).filter((t) => t.readyState === 'live').length : -1);
         const ref = new WeakRef<EventTarget>(this);
         readers.add(ref);
-        options.signal?.addEventListener('abort', () => readers.delete(ref));
+        options.signal?.addEventListener('abort', () => {
+          readers.delete(ref);
+          stopped();
+        });
       }
       async write(message: unknown, options: { signal?: AbortSignal } = {}): Promise<void> {
         writes.push(message);
@@ -68,6 +86,7 @@ export async function installFakeNfc(page: Page, writeMode: 'success' | 'fail' |
             reject(new DOMException('Cancelled', 'AbortError'));
           }, { once: true });
         });
+        deaf = true;
       }
     }
     w.__nfcWriteAborted = false;
@@ -75,6 +94,7 @@ export async function installFakeNfc(page: Page, writeMode: 'success' | 'fail' |
     w.__nfcWrites = writes;
     w.__nfcStartsWithCamera = startsWithCamera;
     w.__nfcTap = (serialNumber: string, urls: string[]) => {
+      if (deaf) return; // missed: the phone is still connected to the tag it wrote
       const records = urls.map((u) => ({ recordType: 'url', data: new DataView(new TextEncoder().encode(u).buffer) }));
       for (const r of readers) r.deref()?.dispatchEvent(Object.assign(new Event('reading'), { serialNumber, message: { records } }));
     };

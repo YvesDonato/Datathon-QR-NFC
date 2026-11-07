@@ -91,6 +91,8 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
   const [result, setResult] = useState<Shown | null>(null);
   // v0.12.2: the person a waiting door ADMIT is reading a badge for (no sheet), until their check-in finishes.
   const admitRow = useRef<LinkTarget | null>(null);
+  // v0.12.2: set once the reader exists (below); a write leaves Chrome deaf to new taps until the reader restarts.
+  const restartReader = useRef<() => void>(() => undefined);
   const [busy, setBusy] = useState(false);
   const [networkDown, setNetworkDown] = useState(false);
   const [camera, setCamera] = useState<CameraState>('starting');
@@ -226,6 +228,7 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
 
   const linkBadge = useCallback(async (row: LinkTarget, uid: string, tag: NfcTag, reader: NDEFReader) => {
     const write = await writeBadge(tag, reader, uid);
+    if (write !== 'unchanged') restartReader.current(); // the tag was written to (or nearly): see useNfcReader.restart
     let code: string | undefined;
     try {
       if (navigator.onLine) {
@@ -329,6 +332,10 @@ export function Scanner(props: { slug: string; eventName: string; timezone: stri
     onUnreadable: () => onUnreadable.current(),
   });
   const needsTap = useNeedsTap();
+  const restartNfc = nfc.restart;
+  useEffect(() => {
+    restartReader.current = () => void restartNfc();
+  }, [restartNfc]);
 
   // Camera: released while linking (A10); decoding pauses while anything else is on screen (§10.2).
   useEffect(() => {

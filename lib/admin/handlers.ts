@@ -145,6 +145,8 @@ const walkInBody = z
   .refine((b) => !b.notRsvped || (!b.checkInNow && !b.sendPass));
 
 const rsvpBody = z.object({ ids: z.array(z.uuid()).min(1).max(1000) }).strict();
+// v0.12.3: no ids = everyone who said Yes; ids = only those (a test send); dryRun = just the count.
+const eventEveBody = z.object({ ids: z.array(z.uuid()).min(1).max(1000).optional(), dryRun: z.boolean().optional() }).strict();
 const inviteBody = z.object({ email: z.string().transform(normalizeEmail).pipe(z.email()), role: z.enum(['organizer', 'volunteer']) }).strict();
 const TRACK_IDS = z.array(z.uuid()).max(100); // v0.11.50: a team's tracks
 
@@ -505,6 +507,23 @@ export function createAdminApi(deps: AdminDeps) {
       if (error) throw new Error(`queue_rsvps failed (${error.code})`);
       if (data > 0) deps.scheduleDrain(deps.drain);
       return json({ queued: data });
+    },
+
+    // POST /api/admin/[slug]/participants/event-eve  { ids?, dryRun? }  (§12, v0.12.3: accepted hackers who haven't had it)
+    async sendEventEve(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const body = eventEveBody.safeParse(await readJson(request));
+      if (!body.success) return badRequest();
+      const { data, error } = await db.rpc('queue_event_eve', {
+        p_event_id: g.eventId,
+        p_actor: g.userId,
+        ...(body.data.ids && { p_participant_ids: body.data.ids }),
+        p_dry_run: body.data.dryRun ?? false,
+      });
+      if (error) throw new Error(`queue_event_eve failed (${error.code})`);
+      if (!body.data.dryRun && data > 0) deps.scheduleDrain(deps.drain);
+      return json({ count: data });
     },
 
     // POST /api/admin/[slug]/participants/[id]/resend

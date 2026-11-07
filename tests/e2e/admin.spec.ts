@@ -410,3 +410,33 @@ test('T-ADM-10: Checkpoints → People lists who was scanned there, searchable b
   await expect(people).toContainText('1 person');
   expect((await f.scan({ cp: f.cp.R, staff: f.staff.vol1, token: f.token.A })).code).toBe('ACCEPTED');
 });
+
+test('T-ADM-13: Send event-day email says how many said Yes, Cancel sends nothing, Send queues them once (v0.12.3)', async ({ page }) => {
+  const waiting = async () =>
+    (await f.pool.query<{ n: number }>(
+      `select count(*)::int as n from participants pa where pa.event_id = $1 and pa.status = 'accepted' and pa.deleted_at is null
+         and not exists (select 1 from email_outbox o where o.participant_id = pa.id and o.kind = 'event_eve' and o.status in ('pending', 'sending', 'sent'))`,
+      [f.e1.id],
+    )).rows[0]?.n ?? 0;
+  const queued = async () => (await f.pool.query<{ n: number }>(`select count(*)::int as n from email_outbox o join participants pa on pa.id = o.participant_id where pa.event_id = $1 and o.kind = 'event_eve'`, [f.e1.id])).rows[0]?.n ?? 0;
+  const n = await waiting();
+  expect(n).toBeGreaterThan(1);
+  await page.goto(`/admin/${f.slug}/participants`);
+  const open = page.getByRole('button', { name: 'Send event-day email' });
+  await open.click();
+  const dialog = page.getByRole('dialog', { name: 'Send the event-day email?' });
+  await expect(dialog).toContainText(`goes to ${n} hackers who said Yes and haven’t had it yet`);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  expect(await queued()).toBe(0);
+
+  await open.click();
+  await dialog.getByRole('button', { name: `Send to ${n}` }).click();
+  await expect(page.getByRole('status')).toHaveText(`✓ Event-day email queued for ${n} hackers.`);
+  expect(await queued()).toBe(n);
+
+  await open.click(); // a second press: nobody left (sent or on its way)
+  await expect(dialog).toContainText('Nothing to send.');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  expect(await queued()).toBe(n);
+});

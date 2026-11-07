@@ -36,7 +36,7 @@ export interface Row {
   rsvpFailed: boolean;
 }
 
-type Pending = { kind: 'resend' | 'revoke' | 'revoke-rsvp' | 'unlink' | 'delete'; row: Row } | { kind: 'walk-in' } | null;
+type Pending = { kind: 'resend' | 'revoke' | 'revoke-rsvp' | 'unlink' | 'delete'; row: Row } | { kind: 'walk-in' } | { kind: 'event-eve'; count: number } | null;
 // Only what Station sets since v0.4; waitlisted and rejected came from the Sheet before that (the Sheet's own call is
 // the In the Sheet filter now).
 const STATUSES = ['accepted', 'pending', 'withdrawn'] as const;
@@ -157,6 +157,19 @@ export function Participants({ slug, badgeOrigin }: { slug: string; badgeOrigin:
     });
   }
 
+  // v0.12.3 (§12): the "See you tomorrow" email to everyone who said Yes and hasn't had it; the count comes first.
+  async function askEventEve() {
+    const r = await api<{ count: number }>(adminUrl(slug, '/participants/event-eve'), { method: 'POST', body: { dryRun: true } });
+    if (r.ok) setPending({ kind: 'event-eve', count: r.data.count });
+    else setMessage(`✕ ${errorText(r)}`);
+  }
+
+  async function sendEventEve() {
+    setPending(null);
+    const r = await api<{ count: number }>(adminUrl(slug, '/participants/event-eve'), { method: 'POST', body: {} });
+    setMessage(r.ok ? `✓ Event-day email queued for ${r.data.count} ${r.data.count === 1 ? 'hacker' : 'hackers'}.` : `✕ ${errorText(r)}`);
+  }
+
   async function sendRsvps() {
     const r = await api<{ queued: number }>(adminUrl(slug, '/participants/rsvp'), { method: 'POST', body: { ids: picked.map((p) => p.id) } });
     setMessage(r.ok ? `✓ RSVP emails queued for ${r.data.queued} ${r.data.queued === 1 ? 'person' : 'people'}.` : `✕ ${errorText(r)}`);
@@ -237,6 +250,9 @@ export function Participants({ slug, badgeOrigin }: { slug: string; badgeOrigin:
             {remindable} already got one: they get the reminder email.
           </span>
         )}
+        <Button type="button" variant="outline" onClick={() => void askEventEve()}>
+          Send event-day email
+        </Button>
       </div>
       {message && (
         <Alert className={`flex items-start gap-[12px] m-[0px_0px_14px] p-[15px_17px] [border-width:1px] [border-style:solid]
@@ -432,6 +448,24 @@ export function Participants({ slug, badgeOrigin }: { slug: string; badgeOrigin:
           confirmLabel="Unlink badge"
           danger
           onConfirm={() => void act('unlink', pending.row)}
+          onCancel={() => setPending(null)}
+        />
+      )}
+      {pending?.kind === 'event-eve' && (
+        <ConfirmDialog
+          title="Send the event-day email?"
+          body={
+            pending.count === 0 ? (
+              <p className="copy">Everyone who said Yes already has it (or it’s on its way). Nothing to send.</p>
+            ) : (
+              <p className="copy">
+                “See you tomorrow” with the check-in time, place and what to bring goes to <strong>{pending.count}</strong>{' '}
+                {pending.count === 1 ? 'hacker who said' : 'hackers who said'} Yes and haven’t had it yet.
+              </p>
+            )
+          }
+          confirmLabel={pending.count === 0 ? 'OK' : `Send to ${pending.count}`}
+          onConfirm={() => (pending.count === 0 ? setPending(null) : void sendEventEve())}
           onCancel={() => setPending(null)}
         />
       )}

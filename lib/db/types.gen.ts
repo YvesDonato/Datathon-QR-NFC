@@ -673,6 +673,9 @@ isOneToOne: false
 "password_link_kind":
 { Args: { "p_email": string }; Returns: string
                            },
+"queue_event_eve":
+{ Args: { "p_actor": string,"p_dry_run"?: boolean,"p_event_id": string,"p_participant_ids"?: (string)[] }; Returns: number
+                           },
 "queue_rsvps":
 { Args: { "p_actor": string,"p_event_id": string,"p_participant_ids": (string)[] }; Returns: number
                            },

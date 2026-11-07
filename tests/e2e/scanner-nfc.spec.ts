@@ -135,7 +135,7 @@ test('T-NFC-29: Manual search links a badge without scanning; a repeated tap is 
   expect(scans).toEqual([]);
   expect(await benScans()).toEqual([]);
   await expect(page.getByTestId('scan-result')).toBeHidden();
-  expect(await nfcActive(page)).toBe(1);
+  await expect.poll(() => nfcActive(page)).toBe(1); // v0.12.2: a fresh reader after writing the badge
   await expect(page.getByRole('button', { name: 'NFC badges' })).toHaveAttribute('aria-pressed', 'true');
 
   await page.clock.setFixedTime(new Date(tappedAt.getTime() + 3001));
@@ -220,10 +220,13 @@ test('T-NFC-29: a refused link stays on the waiting ADMIT; that badge can be tap
   expect(posts).toHaveLength(1);
   if (process.env.HOVER_SCREENSHOTS) { await page.waitForTimeout(600); await page.screenshot({ path: `${process.env.HOVER_SCREENSHOTS}/admit-taken.png` }); } // after the fade-in
   await expect(result).toHaveAttribute('data-dismiss', 'link'); // still waiting
-  await nfcTap(page, serialOf(taken)); // the same badge again, right away: asked again, not ignored
+  const ready = 'Tap their badge on the phone to finish check-in'; // the reader is back after writing that badge (v0.12.2)
+  await expect(result).toContainText(ready);
+  await nfcTap(page, serialOf(taken)); // the same badge again: asked again, not ignored
   await expect.poll(() => posts.length).toBe(2);
   await expect(status).toHaveText(`✕ Badge ${serialOf(taken)} is linked to someone else. Ask an organizer to move it.`);
   await page.unroute('**/api/events/*/badges');
+  await expect(result).toContainText(ready);
   const uid = randomUid();
   await nfcTap(page, serialOf(uid));
   await expect(result).toContainText(`✓ Badge ${serialOf(uid)} linked to ${pia.name}.`);
