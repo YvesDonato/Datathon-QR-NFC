@@ -104,7 +104,15 @@ export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: strin
       <PageHeader title="Judges" description="Add each judge’s LinkedIn and link their badge: tapping it opens their name, title and LinkedIn." />
 
       {error && <p role="alert" className="m-0 text-bad">✕ {error}</p>}
-      <p role="status" className="m-0 min-h-[1.5em]">{message}</p>
+      {/* Only when there is something to say (an always-there empty line left an odd gap under the header). */}
+      {message && (
+        <p role="status" className={`m-0 p-[12px_16px] rounded-md text-[13px] leading-[1.6] [overflow-wrap:anywhere] [border:1px_solid] ${
+          message.startsWith('✕')
+            ? '[border-color:color-mix(in_srgb,var(--bad)_40%,var(--line))] [background:color-mix(in_srgb,#f87171_6%,var(--card))]'
+            : '[border-color:color-mix(in_srgb,var(--ok)_40%,var(--line))] [background:color-mix(in_srgb,#4ade80_6%,var(--card))]'}`}>
+          {message}
+        </p>
+      )}
 
       {judges && judges.length === 0 && <p className="copy text-muted-foreground">No judges yet.</p>}
       {judges && judges.length > 0 && (
@@ -115,7 +123,7 @@ export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: strin
             const draft = drafts[j.id] ?? j.linkedinUrl ?? '';
             return (
               <li key={j.id} aria-label={j.name} className="grid gap-[12px] p-[14px_16px] rounded-lg [border:1px_solid_var(--line)] [background:var(--card)]
-                md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_380px] md:items-center">
+                md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_430px] md:items-center">
                 <div className="min-w-0">
                   <div className="font-semibold [overflow-wrap:anywhere]">{j.name}</div>
                   {j.title && <div className="text-muted-foreground text-[13px] [overflow-wrap:anywhere]">{j.title}</div>}

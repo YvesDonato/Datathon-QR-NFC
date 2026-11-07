@@ -62,12 +62,8 @@ export async function myRank(db: Db, participantId: string): Promise<{ points: n
   return z.object({ points: z.number(), rank: z.number().nullable() }).strict().parse(data);
 }
 
-// Fellow attendees of the badge's event: connection_state() found the viewer's own accepted row there.
-const FELLOW: readonly ConnectionState[] = ['NONE', 'SENT', 'RECEIVED', 'MUTUAL', 'NOT_CHECKED_IN', 'CLOSED'];
-export const isFellowAttendee = (state: ConnectionState | null) => state !== null && FELLOW.includes(state);
-
-// v0.12.4 (owner's request): the badge holder's bio on their badge page, for the audience that can already read it in
-// the Hacker directory (F16): fellow attendees, and only while the holder is listed there. The badge resolves like
+// v0.12.4 (owner's request): the badge holder's bio on their badge page, while they are listed in the Hacker directory
+// (F16); shown to anyone who taps the badge (owner's decision). The badge resolves like
 // connection_state(): its newest link to an accepted, undeleted participant of an event that ended at most 30 days ago.
 export async function badgeHolderBio(db: Db, uid: string, now: Date): Promise<string | null> {
   const badge = normalizeUid(uid);

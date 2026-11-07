@@ -15,7 +15,7 @@ import { clientIpKey } from '@/lib/http/ip';
 import { IP_CEILING_PER_MIN, withinLimit } from '@/lib/pass/handlers';
 import { normalizeUid } from '@/lib/domain/badge';
 import { normalizeEmail } from '@/lib/domain/normalize';
-import { badgeHolderBio, connect, connectionState, isFellowAttendee, type ConnectionState } from '@/lib/me/connections';
+import { badgeHolderBio, connect, connectionState, type ConnectionState } from '@/lib/me/connections';
 import { CopyButton } from './copy-button';
 import { DiscordIcon, GlobeIcon, LinkedInIcon } from '@/app/me/icons';
 import { judgeForBadge } from '@/lib/admin/judges';
@@ -103,8 +103,9 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
     burst = code === 'MUTUAL' ? 'mutual' : code === 'PENDING' ? 'sent' : null;
     if (!limited) state = await connectionState(db(), viewer, uid);
   }
-  // v0.12.4: the bio, only for those who can already read it in the Hacker directory (F16), and never on an unshared profile.
-  const bio = profile?.public && isFellowAttendee(state) ? await badgeHolderBio(db(), uid, new Date()) : null;
+  // v0.12.4 (owner's decision): the bio of a hacker listed in the Hacker directory, to anyone who taps their badge, signed
+  // in or not; never on an unshared profile.
+  const bio = profile?.public ? await badgeHolderBio(db(), uid, new Date()) : null;
   // A private profile shows no name (§6.5), so the Connect wording doesn't either.
   const name = profile?.public ? profile.firstName : null;
 
