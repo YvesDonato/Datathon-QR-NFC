@@ -37,9 +37,9 @@ export function ArrivalsChart({ buckets, timezone }: { buckets: ArrivalBucket[];
       timezone={timezone}
       minutes={15}
       noun={['arrival', 'arrivals']}
-      title="Door arrivals per 15 minutes"
+      title="Check-ins"
       column="Arrivals"
-      empty="No door check-ins yet."
+      empty="No check-ins yet."
     />
   );
 }

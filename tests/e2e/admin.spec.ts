@@ -6,7 +6,7 @@ import { createStandardFixture, type StandardFixture } from '../fixtures/standar
 const ORG = authStatePath('admin-org');
 const VOL = authStatePath('admin-vol');
 const OTHER_ORG = authStatePath('admin-other-org');
-const PAGES = ['', '/participants', '/teams', '/workshops', '/leaderboard', '/judges', '/checkpoints', '/catering', '/staff', '/info', '/export', '/tools'];
+const PAGES = ['', '/participants', '/teams', '/workshops', '/leaderboard', '/judges', '/checkpoints', '/catering', '/staff', '/info', '/tools'];
 
 test.describe.configure({ mode: 'serial' });
 test.use({ storageState: ORG });
@@ -87,7 +87,7 @@ test('T-ADM-06: door closed 20 min before starts_at shows a warning; opening the
   await f.pool.query(`update checkpoints set is_open = false where id = $1`, [f.cp.D]);
 
   await page.goto(`/admin/${f.slug}`);
-  const warning = page.getByRole('alert').filter({ hasText: 'door is closed' });
+  const warning = page.getByRole('alert').filter({ hasText: 'Check-in is closed' });
   await expect(warning).toBeVisible();
   await expect(page.getByTestId('kpi-accepted')).toHaveText(/Accepted\s*4/); // A, B, Rv, N (T is a test participant, §13)
 
@@ -113,7 +113,7 @@ test('T-ADM-06: arrival bars keep UTC order across local days and expose hover/f
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/admin/${f.slug}`);
-  const chart = page.getByRole('group', { name: /^Door arrivals per 15 minutes/ });
+  const chart = page.getByRole('group', { name: /^Check-ins, / });
   const bars = chart.locator('[data-bucket-utc]');
   await expect(bars).toHaveCount(2);
   expect(await bars.evaluateAll(nodes => nodes.map(n => n.getAttribute('data-bucket-utc')))).toEqual(['2026-11-08T02:15:00.000Z', '2026-11-09T00:30:00.000Z']);
@@ -266,8 +266,9 @@ test('Admin smoke: a walk-in is added without checking in (v0.12.1); void a scan
   expect(rows).toHaveLength(1);
   expect(rows[0].voided_at).not.toBeNull();
 
-  await page.goto(`/admin/${f.slug}/export`);
-  for (const name of ['Participants CSV', 'Scans CSV', 'Checkpoint summary CSV']) {
+  // v0.12.4 (owner's request): every download is on Tools.
+  await page.goto(`/admin/${f.slug}/tools`);
+  for (const name of ['Participants CSV', 'Scans CSV', 'Checkpoint summary CSV', 'Workshop attendance CSV']) {
     const href = await page.getByRole('link', { name }).getAttribute('href');
     expect(href).toBeTruthy();
     const res = await page.request.get(href ?? '');

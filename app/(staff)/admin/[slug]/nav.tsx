@@ -15,7 +15,6 @@ const TABS = [
   ['/catering', 'Catering'],
   ['/staff', 'Staff'],
   ['/info', 'Info'],
-  ['/export', 'Export'],
   ['/tools', 'Tools'],
 ] as const;
 

@@ -32,8 +32,9 @@ test('T-ANA-11: Workshops tab shows tiles, the per-workshop table, the breakdown
   await expect(page.getByTestId('kpi-ws-attendees')).toContainText('100% of checked-in hackers');
   await expect(page.getByRole('row', { name: /Intro to Pandas/ })).toContainText('50%');
   await expect(page.getByRole('list', { name: 'Checked-in hackers by number of workshops attended' }).getByRole('listitem').nth(1)).toContainText('2 (100%)');
-  await expect(page.getByRole('group', { name: /Workshop check-ins per 15 minutes/ })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Download workshop attendance CSV' })).toHaveAttribute('href', new RegExp(`/api/admin/${f.slug}/export/workshops\\.csv$`));
+  await expect(page.getByRole('group', { name: /^Workshop check-ins, / })).toBeVisible();
+  // v0.12.4 (owner's request): the attendance CSV is on Tools, not here (the admin smoke test downloads it).
+  await expect(page.getByRole('link', { name: /CSV/ })).toHaveCount(0);
 
   // Who attended: the same People panel as the Checkpoints tab.
   await page.getByRole('button', { name: 'People at Intro to Pandas' }).click();

@@ -89,7 +89,7 @@ export function Dashboard({ slug }: { slug: string }) {
           [&&]:[border-color:color-mix(in_srgb,_var(--bad,_#f87171)_40%,_var(--line))]
 
           [&&]:[background:color-mix(in_srgb,_#f87171_6%,_var(--card))]" asChild><p  role="alert">
-          ⚠ The door is closed and the event starts {formatEventDateTime(data.event.startsAt, tz)}. Open it on the Checkpoints tab.
+          ⚠ Check-in is closed and the event starts {formatEventDateTime(data.event.startsAt, tz)}. Open it on the Checkpoints tab.
         </p></Alert>
       )}
       {data.alerts.notFound.map((a) => (
@@ -174,7 +174,7 @@ export function Dashboard({ slug }: { slug: string }) {
         </Table>
       </div>
 
-      <h2>Door arrivals per 15 minutes</h2>
+      <h2>Check-ins</h2>
       <ArrivalsChart buckets={data.arrivals} timezone={data.event.timezone} />
 
       {data.sessionRanking.length > 0 && (

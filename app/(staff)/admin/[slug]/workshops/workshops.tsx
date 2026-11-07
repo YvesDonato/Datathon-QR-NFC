@@ -2,7 +2,6 @@
 
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { adminUrl, errorText, useApi } from '../api';
@@ -30,7 +29,7 @@ const wrap = `tw-admin-tableWrap overflow-x-auto [background:var(--card)] [borde
   [border-color:var(--line)] rounded-card shadow-panel max-[600.001px]:max-w-full`;
 
 // SPEC §13: attendance per workshop (session checkpoints), how many workshops each checked-in hacker went to,
-// taps the cooldown refused, and check-ins over time. People lists who attended each one; the CSV has them all.
+// taps the cooldown refused, and check-ins over time. People lists who attended each one; the CSV (on Tools) has them all.
 export function Workshops({ slug }: { slug: string }) {
   const api = useApi();
   const [data, setData] = useState<WorkshopData | null>(null);
@@ -61,11 +60,7 @@ export function Workshops({ slug }: { slug: string }) {
 
   return (
     <>
-      <PageHeader title="Workshops" description="Who went to each workshop, and how many each hacker attended.">
-        <Button variant="outline" asChild>
-          <a href={adminUrl(slug, '/export/workshops.csv')} download aria-label="Download workshop attendance CSV">Download attendance CSV</a>
-        </Button>
-      </PageHeader>
+      <PageHeader title="Workshops" description="Who went to each workshop, and how many each hacker attended." />
       {error && (
         <Alert className="text-[13px]" asChild>
           <p role="status">! Couldn’t refresh: {error}</p>
@@ -156,13 +151,13 @@ export function Workshops({ slug }: { slug: string }) {
         ))}
       </ul>
 
-      <h2>Workshop check-ins per 15 minutes</h2>
+      <h2>Workshop check-ins</h2>
       <BucketChart
         buckets={data.buckets}
         timezone={data.timezone}
         minutes={15}
         noun={['check-in', 'check-ins']}
-        title="Workshop check-ins per 15 minutes"
+        title="Workshop check-ins"
         column="Check-ins"
         empty="No workshop check-ins yet."
       />
