@@ -10,9 +10,10 @@ const subscribeNever = () => () => undefined;
 
 // After writing a tag, Chrome keeps its connection to it and Android then misses new taps until reader mode is turned
 // off and on, which is what leaving the page and coming back does (owner's report, v0.12.2). Chrome turns reader mode
-// off only 500 ms after the last reader stops (Chromium NfcImpl, DELAY_TO_DISABLE_READER_MODE_MS), so restart()
-// stops, waits past that, and starts a fresh reader.
-const RESTART_GAP_MS = 1000;
+// off only 500 ms after the last reader stops (Chromium NfcImpl, DELAY_TO_DISABLE_READER_MODE_MS), as a low-priority
+// task that a busy phone can run late, and a new reader before it runs keeps the old session; so restart() stops,
+// waits well past that, and starts a fresh reader (v0.12.4: 2.5 s, was 1 s).
+const RESTART_GAP_MS = 2500;
 
 export interface NfcTag {
   serial: string;

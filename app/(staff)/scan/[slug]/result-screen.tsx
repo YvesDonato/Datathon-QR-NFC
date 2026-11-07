@@ -16,6 +16,8 @@ export interface AdmitLink {
   /** Chrome needs a tap before this phone's reader can start (first use, or after an error). */
   needsTap: boolean;
   onStart: () => void;
+  /** v0.12.4: stop the reader and start a fresh one, like leaving Chrome and coming back. */
+  onReset: () => void;
 }
 
 const BODY = 'm-0 flex w-full flex-1 flex-col items-center justify-center gap-4 border-0 bg-transparent p-0 text-center font-mono text-base text-white whitespace-normal';
@@ -38,7 +40,7 @@ export function ResultScreen({ view, shownAt, onDismiss, link }: { view: ResultV
     : null;
   // Only ask for the badge once the reader is on: a tap before that goes to Android, which opens the badge's page.
   const hint = !link ? (tap ? 'Tap to continue' : 'Tap to skip')
-    : link.readerState === 'on' ? 'Tap their badge on the phone to finish check-in'
+    : link.readerState === 'on' ? 'Hold their badge flat on the phone until it says linked'
     : link.readerState === 'off' && link.needsTap ? 'Tap Start badge reader, then their badge'
     : 'Starting badge reader…';
   const container = useRef<HTMLDivElement>(null);
@@ -148,6 +150,19 @@ export function ResultScreen({ view, shownAt, onDismiss, link }: { view: ResultV
             focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
         >
           Start badge reader
+        </button>
+      )}
+      {link && link.readerState === 'on' && link.state.kind !== 'saving' && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            link.onReset();
+          }}
+          className="mb-2 min-h-[44px] cursor-pointer rounded-card border-2 border-solid border-white/70 bg-transparent px-5 font-mono text-[16px] font-bold text-white
+            focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+        >
+          Badge not reading? Reset badge reader
         </button>
       )}
     </div>
