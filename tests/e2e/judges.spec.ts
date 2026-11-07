@@ -30,14 +30,14 @@ test('T-JUDGE-04: the judges listed, fix a LinkedIn, link a judge’s badge; tap
     [f.e1.id],
   );
   await page.reload();
-  const ayush = page.getByRole('row', { name: /Ayush Singh/ });
+  const ayush = page.getByRole('listitem', { name: 'Ayush Singh' });
   await expect(ayush).toContainText('Research Scientist @ Meta');
   // Every judge has a Profile button, badge or not: their own page shows the badge's card.
   const profile = ayush.getByRole('link', { name: 'Open Ayush Singh’s profile' });
   await expect(profile).toHaveAttribute('target', '_blank');
   const judgeHref = await profile.getAttribute('href');
   expect(judgeHref).toMatch(/^\/judge\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole('row', { name: /Mahir Azim/ }).getByLabel('LinkedIn for Mahir Azim')).toHaveValue('https://www.linkedin.com/in/mahirazim');
+  await expect(page.getByRole('listitem', { name: 'Mahir Azim' }).getByLabel('LinkedIn for Mahir Azim')).toHaveValue('https://www.linkedin.com/in/mahirazim');
 
   const linkedin = ayush.getByLabel('LinkedIn for Ayush Singh');
   await linkedin.fill('linkedin.com/company/meta');
@@ -56,13 +56,13 @@ test('T-JUDGE-04: the judges listed, fix a LinkedIn, link a judge’s badge; tap
   await nfcTap(page, serialOf(uid));
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: `✓ Badge ${serialOf(uid)} linked to Ayush Singh. Its profile link is on the badge.` })).toBeVisible();
-  await expect(ayush).toContainText('✓ Linked');
+  await expect(ayush).toContainText('✓ Badge linked');
   expect(await nfcWrites(page)).toEqual([{ records: [{ recordType: 'url', data: `https://badges.example.test/profile/${uid}?tap` }] }]);
   expect(await nfcActive(page)).toBe(0);
 
   // A hacker's badge can't become a judge's.
   const { uid: hackerUid } = await f.linkBadge(f.p.A);
-  await page.getByRole('row', { name: /Mahir Azim/ }).getByRole('button', { name: 'Link badge for Mahir Azim' }).click();
+  await page.getByRole('listitem', { name: 'Mahir Azim' }).getByRole('button', { name: 'Link badge for Mahir Azim' }).click();
   await expect.poll(() => nfcActive(page)).toBe(1);
   await nfcTap(page, serialOf(hackerUid), [`https://badges.example.test/profile/${hackerUid}?tap`]);
   await expect(page.getByRole('status').filter({ hasText: `✕ Badge ${serialOf(hackerUid)} is a hacker’s badge. Use another badge for Mahir Azim.` })).toBeVisible();

@@ -2,7 +2,6 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 import { useCallback, useRef, useState } from 'react';
 import type { Judge } from '@/lib/admin/judges';
@@ -108,54 +107,42 @@ export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: strin
 
       {judges && judges.length === 0 && <p className="copy text-muted-foreground">No judges yet.</p>}
       {judges && judges.length > 0 && (
-        <div className="min-w-0 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Judge</TableHead>
-                <TableHead>LinkedIn</TableHead>
-                <TableHead>Badge</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {judges.map((j) => {
-                const draft = drafts[j.id] ?? j.linkedinUrl ?? '';
-                return (
-                  <TableRow key={j.id}>
-                    <TableCell className="align-top">
-                      <div className="font-semibold">{j.name}</div>
-                      {j.title && <div className="text-muted-foreground text-[13px]">{j.title}</div>}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <form className="flex gap-[8px] items-center min-w-[260px]" onSubmit={(e) => { e.preventDefault(); void saveLinkedin(j); }}>
-                        <Input aria-label={`LinkedIn for ${j.name}`} className="min-h-[44px] flex-1" placeholder="linkedin.com/in/…" value={draft} onChange={(e) => setDrafts((d) => ({ ...d, [j.id]: e.target.value }))} />
-                        <Button type="submit" variant="outline" size="sm" disabled={draft === (j.linkedinUrl ?? '')}>Save</Button>
-                      </form>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="flex flex-wrap gap-[8px] items-center">
-                        {/* Their profile: the same card their badge opens (§6.5), with or without a badge. */}
-                        <Button size="sm" variant="outline" asChild>
-                          <a href={`/judge/${j.id}`} target="_blank" rel="noopener" aria-label={`Open ${j.name}’s profile`}>Profile ↗</a>
-                        </Button>
-                        {j.badgeUid ? <span className="text-ok">✓ Linked</span> : <span className="text-muted-foreground">No badge</span>}
-                        {canLink && (
-                          <Button type="button" size="sm" variant="outline" disabled={badgeBusy} aria-label={`${j.badgeUid ? 'Replace' : 'Link'} badge for ${j.name}`} onClick={() => startLink(j)}>
-                            {j.badgeUid ? 'Replace badge' : 'Link badge'}
-                          </Button>
-                        )}
-                        {j.badgeUid && (
-                          <Button type="button" size="sm" variant="ghost" aria-label={`Unlink badge for ${j.name}`} onClick={() => setPending({ kind: 'unlink', judge: j })}>Unlink</Button>
-                        )}
-                        <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${j.name}`} onClick={() => setPending({ kind: 'delete', judge: j })}>Remove</Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        // One card per judge (a table cut the LinkedIn field and buttons off on a phone): stacked on a phone, three
+        // columns from md up.
+        <ul className="m-0 p-0 list-none grid gap-[10px]" aria-label="Judges">
+          {judges.map((j) => {
+            const draft = drafts[j.id] ?? j.linkedinUrl ?? '';
+            return (
+              <li key={j.id} aria-label={j.name} className="grid gap-[12px] p-[14px_16px] rounded-lg [border:1px_solid_var(--line)] [background:var(--card)]
+                md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_380px] md:items-center">
+                <div className="min-w-0">
+                  <div className="font-semibold [overflow-wrap:anywhere]">{j.name}</div>
+                  {j.title && <div className="text-muted-foreground text-[13px] [overflow-wrap:anywhere]">{j.title}</div>}
+                </div>
+                <form className="flex gap-[8px] items-center min-w-0" onSubmit={(e) => { e.preventDefault(); void saveLinkedin(j); }}>
+                  <Input aria-label={`LinkedIn for ${j.name}`} className="min-h-[44px] flex-1 min-w-0" placeholder="linkedin.com/in/…" value={draft} onChange={(e) => setDrafts((d) => ({ ...d, [j.id]: e.target.value }))} />
+                  <Button type="submit" variant="outline" size="sm" disabled={draft === (j.linkedinUrl ?? '')}>Save</Button>
+                </form>
+                <div className="flex flex-wrap gap-[8px] items-center md:justify-end">
+                  {/* Their profile: the same card their badge opens (§6.5), with or without a badge. */}
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={`/judge/${j.id}`} target="_blank" rel="noopener" aria-label={`Open ${j.name}’s profile`}>Profile ↗</a>
+                  </Button>
+                  {canLink && (
+                    <Button type="button" size="sm" variant="outline" disabled={badgeBusy} aria-label={`${j.badgeUid ? 'Replace' : 'Link'} badge for ${j.name}`} onClick={() => startLink(j)}>
+                      {j.badgeUid ? 'Replace badge' : 'Link badge'}
+                    </Button>
+                  )}
+                  {j.badgeUid ? <span className="text-ok text-[13px]">✓ Badge linked</span> : <span className="text-muted-foreground text-[13px]">No badge</span>}
+                  {j.badgeUid && (
+                    <Button type="button" size="sm" variant="ghost" aria-label={`Unlink badge for ${j.name}`} onClick={() => setPending({ kind: 'unlink', judge: j })}>Unlink</Button>
+                  )}
+                  <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${j.name}`} onClick={() => setPending({ kind: 'delete', judge: j })}>Remove</Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {target && (

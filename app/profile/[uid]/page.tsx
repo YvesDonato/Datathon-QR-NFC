@@ -4,6 +4,7 @@ import { BrandMark } from '@/components/brand-mark';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { headers } from 'next/headers';
@@ -20,6 +21,7 @@ import { DiscordIcon, GlobeIcon, LinkedInIcon } from '@/app/me/icons';
 import { judgeForBadge } from '@/lib/admin/judges';
 import { ACTION, ICON, LABEL, LABEL_TEXT, linkedinLabel, ROW, VALUE } from './rows';
 import { JudgeCard } from './judge-card';
+import { ConnectBurst, TapRipple } from './connect-fx';
 
 // SPEC §6.5: what a phone opens when it taps a badge. Public since v0.9: no sign-in needed, and
 // badge_profile() returns only what the holder shares. The holder's own tap opens their menu.
@@ -53,18 +55,8 @@ const siteLabel = (href: string) => {
 };
 
 
-// SPEC F17 (v0.12): Connect is a POST from a button; the tapper is the signed-in account, never the badge.
-async function connectAction(formData: FormData) {
-  'use server';
-  const uid = normalizeUid(String(formData.get('uid') ?? ''));
-  if (!uid) notFound();
-  const user = await currentUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(`/profile/${uid}`)}`);
-  const { code } = await connect(db(), user, uid);
-  redirect(`/profile/${uid}${code === 'RATE_LIMITED' ? '?c=RATE_LIMITED' : ''}`);
-}
 
-export default async function BadgeProfilePage(props: { params: Promise<{ uid: string }>; searchParams: Promise<{ c?: string }> }) {
+export default async function BadgeProfilePage(props: { params: Promise<{ uid: string }>; searchParams: Promise<{ tap?: string }> }) {
   await connection(); // per request: an opt-out must take effect on the next view
   const raw = (await props.params).uid;
   const uid = normalizeUid(raw);
@@ -98,8 +90,19 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
   const profile = profileSchema.parse(data);
   // v0.12.4 (§11 Judges): a badge no hacker holds may be a judge's: name, "Judge", title and LinkedIn.
   const judge = profile === null ? await judgeForBadge(db(), uid, new Date()) : null;
-  const state: ConnectionState | null = profile && viewer ? await connectionState(db(), viewer, uid) : null;
-  const limited = (await props.searchParams).c === 'RATE_LIMITED';
+  let state: ConnectionState | null = profile && viewer ? await connectionState(db(), viewer, uid) : null;
+  // v0.12.4 (owner's request): no Connect button. A signed-in hacker tapping a badge connects: the badge's own link
+  // carries `?tap` (§6.5); a plain link to the page (e.g. from Connections) never connects anyone.
+  const tapped = (await props.searchParams).tap !== undefined;
+  let limited = false;
+  // The special animation is for this tap only: one that just made a connection (PENDING) or completed it (MUTUAL).
+  let burst: 'sent' | 'mutual' | null = null;
+  if (viewer && tapped && (state === 'NONE' || state === 'RECEIVED')) {
+    const { code } = await connect(db(), viewer, uid);
+    limited = code === 'RATE_LIMITED';
+    burst = code === 'MUTUAL' ? 'mutual' : code === 'PENDING' ? 'sent' : null;
+    if (!limited) state = await connectionState(db(), viewer, uid);
+  }
   // v0.12.4: the bio, only for those who can already read it in the Hacker directory (F16), and never on an unshared profile.
   const bio = profile?.public && isFellowAttendee(state) ? await badgeHolderBio(db(), uid, new Date()) : null;
   // A private profile shows no name (§6.5), so the Connect wording doesn't either.
@@ -109,8 +112,20 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
     <Entrance><main className="max-w-[520px] m-[0px_auto] p-[24px_16px_56px] flex flex-col gap-[16px] [:where(&)_>_*]:mt-0
 
           [:where(&)_>_*]:mb-0">
-      <BrandMark className="min-h-11 mb-[8px]" />
-      <Card className="[&>p]:m-0 [&>h2]:text-lg " asChild><section >
+      {viewer ? (
+        // Signed in: the /me pages' header row, with the way back to the menu (owner's request, v0.12.4).
+        <div className="flex items-center gap-[16px] min-h-[44px] mb-[8px]">
+          <Link className="inline-flex shrink-0 items-center min-h-[44px] text-fg font-semibold no-underline [&:hover]:text-accent" href="/me">
+            ← My menu
+          </Link>
+          <BrandMark className="max-w-[70%]" />
+          <span aria-hidden="true" className="min-w-3 flex-1 h-px bg-[var(--edge)]" />
+        </div>
+      ) : (
+        <BrandMark className="min-h-11 mb-[8px]" />
+      )}
+      <Card className={`relative overflow-hidden [&>p]:m-0 [&>h2]:text-lg ${state === 'MUTUAL' ? 'ring-1 ring-[color-mix(in_srgb,var(--accent)_45%,transparent)] shadow-[0_0_32px_rgba(52,211,153,0.12)]' : ''}`} asChild><section>
+        {burst ? <ConnectBurst kind={burst} name={name} /> : (profile?.public || judge) && <TapRipple />}
         {judge && <JudgeCard judge={judge} />}
         {profile === null && !judge && (
           <>
@@ -127,7 +142,10 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
         {profile?.public && (
           <>
             <header className="grid gap-[4px]">
-              <p className="m-0 text-muted-foreground text-[12px] tracking-[0.12em] uppercase">Hacker profile</p>
+              <div className="flex flex-wrap items-center gap-[8px_10px]">
+                <p className="m-0 text-muted-foreground text-[12px] tracking-[0.12em] uppercase">Hacker profile</p>
+                <ConnectionChip state={state} name={name} />
+              </div>
               <h1 className="m-0 text-[28px] font-semibold leading-[1.2] [overflow-wrap:anywhere]">{`${profile.firstName} ${profile.lastName}`.trim()}</h1>
             </header>
             {bio && <p className="copy m-0 whitespace-pre-line [overflow-wrap:anywhere]" data-testid="badge-bio">{bio}</p>}
@@ -166,34 +184,34 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
             )}
           </>
         )}
-        {profile && state && <Connect uid={uid} name={name} state={state} />}
+        {profile && state && <Connect name={name} state={state} />}
         {limited && <p role="alert" className="text-bad">✕ Too many connects in a short time. Wait a few minutes and try again.</p>}
       </section></Card>
     </main></Entrance>
   );
 }
 
-// The connection game (F17): what the signed-in viewer can do with this badge. Not an attendee of this event,
-// an unknown badge or their own: nothing.
-function Connect(props: { uid: string; name: string | null; state: ConnectionState }) {
-  const { uid, name, state } = props;
-  const button = (label: string) => (
-    <form action={connectAction}>
-      <input type="hidden" name="uid" value={uid} />
-      <Button type="submit">{label}</Button>
-    </form>
-  );
+// v0.12.4 (owner's request): where you stand with them, beside their name: in words, never colour alone.
+function ConnectionChip({ state, name }: { state: ConnectionState | null; name: string | null }) {
+  const chip = 'inline-flex items-center gap-[6px] rounded-full px-[10px] py-[2px] text-[11px] font-semibold tracking-[0.08em] uppercase [border:1px_solid]';
+  if (state === 'MUTUAL') {
+    return <span data-testid="connection-chip" className={`${chip} text-accent [border-color:color-mix(in_srgb,var(--accent)_50%,transparent)] [background:color-mix(in_srgb,var(--accent)_12%,transparent)]`}>● Connected</span>;
+  }
+  if (state === 'SENT') return <span data-testid="connection-chip" className={`${chip} text-muted-foreground [border-color:var(--line)]`}>◌ Waiting for {name ?? 'them'}</span>;
+  if (state === 'RECEIVED') return <span data-testid="connection-chip" className={`${chip} text-fg [border-color:var(--line)]`}>↩ Tapped you</span>;
+  return null;
+}
+
+// The connection game (F17): where the signed-in viewer stands with this badge's holder. v0.12.4: no buttons; tapping
+// the badge connects (above). Not an attendee of this event, an unknown badge or their own: nothing.
+function Connect(props: { name: string | null; state: ConnectionState }) {
+  const { name, state } = props;
   const box = 'grid gap-[8px] pt-[12px] [border-top-width:1px] [border-top-style:solid] [border-top-color:var(--line)]';
   switch (state) {
     case 'NONE':
-      return <div className={box}>{button(name ? `Connect with ${name}` : 'Connect')}</div>;
+      return <p className={`${box} m-0 text-muted-foreground`}>Tap {name ? `${name}’s` : 'their'} badge with your phone to connect.</p>;
     case 'RECEIVED':
-      return (
-        <div className={box}>
-          <p className="m-0">{name ?? 'They'} tapped your badge. Connect back to make it count.</p>
-          {button(name ? `Connect back with ${name}` : 'Connect back')}
-        </div>
-      );
+      return <p className={`${box} m-0`}>{name ?? 'They'} tapped your badge. Tap theirs with your phone to connect back.</p>;
     case 'SENT':
       return <p role="status" className={`${box} m-0`}>Sent! It counts once {name ?? 'they'} tap{name ? 's' : ''} your badge too.</p>;
     case 'MUTUAL':

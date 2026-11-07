@@ -15,7 +15,7 @@ test.afterAll(async () => {
 const emailOf = async (participantId: string) =>
   (await f.pool.query<{ email: string }>('select email from participants where id = $1', [participantId])).rows[0]?.email ?? '';
 
-test('T-CONN-06: A connects on B’s badge, B connects back, both see each other on /me; signed out sees no connect at all; fellow attendees see the bio (v0.12.4)', async ({ browser }) => {
+test('T-CONN-06: A connects on B’s badge, B connects back, both see each other on /me; a badge tap connects with no button, a plain link doesn’t; signed out sees no connect; fellow attendees see the bio (v0.12.4)', async ({ browser }) => {
   await f.checkIn(f.p.A);
   await f.checkIn(f.p.B);
   const { uid: aBadge } = await f.linkBadge(f.p.A);
@@ -31,13 +31,17 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await expect(anonPage.getByRole('link', { name: /Sign in/ })).toHaveCount(0); // owner's request: no Sign in to connect
   await expect(anonPage.getByRole('button', { name: /Connect/ })).toHaveCount(0);
   await expect(anonPage.getByTestId('badge-bio')).toHaveCount(0); // never to strangers
+  await expect(anonPage.getByRole('link', { name: '← My menu' })).toHaveCount(0); // the way back is for signed-in hackers
+  await expect(anonPage.getByTestId('tap-ripple')).toHaveCount(1); // the plain animation, never the special one
+  await expect(anonPage.getByTestId('connect-burst')).toHaveCount(0);
+  await expect(anonPage.getByTestId('connection-chip')).toHaveCount(0);
   expect(await anonPage.content()).not.toContain('quokkabots');
   await anon.close();
 
   const a = await browser.newContext({ baseURL: E2E_ORIGIN });
   const aPage = await a.newPage();
   await createAccount(await emailOf(f.p.A));
-  await signIn(aPage, await emailOf(f.p.A), `/profile/${bBadge}?tap`);
+  await signIn(aPage, await emailOf(f.p.A), `/profile/${bBadge}`); // a plain link, not a badge tap
   await expect(aPage.getByTestId('badge-bio')).toHaveText('I build <b>quokkabots</b>\nand drink tea', { useInnerText: true }); // escaped, line kept
   await f.pool.query(`update participants set profile_public = false where id = $1`, [f.p.B]);
   await aPage.reload();
@@ -46,17 +50,35 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await aPage.reload();
   await expect(aPage.getByRole('heading', { name: 'Ben Fixture' })).toBeVisible();
   await expect(aPage.getByTestId('badge-bio')).toHaveCount(0); // not listed in the directory: no bio
-  await aPage.getByRole('button', { name: 'Connect with Ben' }).click();
-  await expect(aPage.getByText('Sent! It counts once Ben taps your badge too.')).toBeVisible();
+  // v0.12.4 (owner's request): no Connect button; a plain link connects nobody, a badge tap (?tap) connects.
+  await expect(aPage.getByRole('link', { name: '← My menu' })).toHaveAttribute('href', '/me');
+  await expect(aPage.getByText('Tap Ben’s badge with your phone to connect.')).toBeVisible();
   await expect(aPage.getByRole('button', { name: /Connect/ })).toHaveCount(0);
+  const taps = async () => (await f.pool.query('select from_participant_id from connection_taps where event_id = $1', [f.e1.id])).rows.length;
+  expect(await taps()).toBe(0);
+  await expect(aPage.getByTestId('connect-burst')).toHaveCount(0);
+  await aPage.goto(`/profile/${bBadge}?tap`);
+  await expect(aPage.getByText('Sent! It counts once Ben taps your badge too.')).toBeVisible();
+  await expect(aPage.getByTestId('connect-burst')).toHaveAttribute('data-kind', 'sent'); // the special one, this tap only
+  await expect(aPage.getByTestId('connection-chip')).toHaveText('◌ Waiting for Ben');
+  await aPage.reload(); // a refresh doesn't tap again, or replay it
+  await expect(aPage.getByText('Sent! It counts once Ben taps your badge too.')).toBeVisible();
+  await expect(aPage.getByTestId('connect-burst')).toHaveCount(0);
+  await expect(aPage.getByTestId('tap-ripple')).toHaveCount(1);
+  expect(await taps()).toBe(1);
 
   const b = await browser.newContext({ baseURL: E2E_ORIGIN });
   const bPage = await b.newPage();
   await createAccount(await emailOf(f.p.B));
-  await signIn(bPage, await emailOf(f.p.B), `/profile/${aBadge}?tap`);
-  await expect(bPage.getByText('Ada tapped your badge. Connect back to make it count.')).toBeVisible();
-  await bPage.getByRole('button', { name: 'Connect back with Ada' }).click();
+  await signIn(bPage, await emailOf(f.p.B), `/profile/${aBadge}`);
+  await expect(bPage.getByText('Ada tapped your badge. Tap theirs with your phone to connect back.')).toBeVisible();
+  await expect(bPage.getByTestId('connection-chip')).toHaveText('↩ Tapped you');
+  await bPage.goto(`/profile/${aBadge}?tap`); // Ben taps Ada's badge back
   await expect(bPage.getByText('✓ You’re connected with Ada.')).toBeVisible();
+  await expect(bPage.getByTestId('connect-burst')).toHaveAttribute('data-kind', 'mutual');
+  await expect(bPage.getByText('+1 connection')).toBeVisible();
+  await expect(bPage.getByTestId('connection-chip')).toHaveText('● Connected');
+  expect(await taps()).toBe(2);
 
   // A's menu: the Connections row counts it; the page lists Ben with his shared LinkedIn.
   await aPage.goto('/me');
