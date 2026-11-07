@@ -144,10 +144,7 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
         {profile?.public && (
           <>
             <header className="grid gap-[4px]">
-              <div className="flex flex-wrap items-center gap-[8px_10px]">
-                <p className="m-0 text-muted-foreground text-[12px] tracking-[0.12em] uppercase">Hacker profile</p>
-                <ConnectionChip state={state} name={name} />
-              </div>
+              <p className="m-0 text-muted-foreground text-[12px] tracking-[0.12em] uppercase">Hacker profile</p>
               <h1 className="m-0 text-[28px] font-semibold leading-[1.2] [overflow-wrap:anywhere]">{`${profile.firstName} ${profile.lastName}`.trim()}</h1>
             </header>
             {bio && <p className="copy m-0 whitespace-pre-line [overflow-wrap:anywhere]" data-testid="badge-bio">{bio}</p>}
@@ -193,17 +190,6 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
   );
 }
 
-// v0.12.4 (owner's request): where you stand with them, beside their name: in words, never colour alone.
-function ConnectionChip({ state, name }: { state: ConnectionState | null; name: string | null }) {
-  const chip = 'inline-flex items-center gap-[6px] rounded-full px-[10px] py-[2px] text-[11px] font-semibold tracking-[0.08em] uppercase [border:1px_solid]';
-  if (state === 'MUTUAL') {
-    return <span data-testid="connection-chip" className={`${chip} text-accent [border-color:color-mix(in_srgb,var(--accent)_50%,transparent)] [background:color-mix(in_srgb,var(--accent)_12%,transparent)]`}>● Connected</span>;
-  }
-  if (state === 'SENT') return <span data-testid="connection-chip" className={`${chip} text-muted-foreground [border-color:var(--line)]`}>◌ Waiting for {name ?? 'them'}</span>;
-  if (state === 'RECEIVED') return <span data-testid="connection-chip" className={`${chip} text-fg [border-color:var(--line)]`}>↩ Tapped you</span>;
-  return null;
-}
-
 // The connection game (F17): where the signed-in viewer stands with this badge's holder. v0.12.4: no buttons; tapping
 // the badge connects (above). Not an attendee of this event, an unknown badge or their own: nothing.
 function Connect(props: { name: string | null; state: ConnectionState }) {
@@ -217,7 +203,8 @@ function Connect(props: { name: string | null; state: ConnectionState }) {
     case 'SENT':
       return null; // owner's request (v0.12.4): the "◌ Waiting for {name}" chip says it
     case 'MUTUAL':
-      return null; // the "● Connected" chip beside their name says it (owner's polish request, v0.12.4)
+      // Owner's request: not on screen (the card's green ring shows it); kept for screen readers, so it isn't colour alone.
+      return <p role="status" className="sr-only">✓ You’re connected{name ? ` with ${name}` : ''}.</p>;
     case 'NOT_CHECKED_IN':
       return <p className={`${box} m-0 text-muted-foreground`}>Check in at the door first, then you can connect.</p>;
     case 'CLOSED':

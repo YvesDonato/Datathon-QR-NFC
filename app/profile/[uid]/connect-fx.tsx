@@ -23,9 +23,7 @@ export function ConnectBurst({ kind, name }: { kind: 'mutual' | 'sent'; name: st
   const other = mutual ? 'var(--accent)' : STAR;
   return (
     <div aria-hidden="true" data-testid="connect-burst" data-kind={kind}
-      className="relative grid justify-items-center gap-[10px] p-[22px_16px_16px] rounded-lg overflow-hidden
-        [border:1px_solid_color-mix(in_srgb,var(--accent)_24%,var(--line))]
-        [background:radial-gradient(120%_100%_at_50%_0%,color-mix(in_srgb,var(--accent)_11%,transparent),transparent_72%)]">
+      className="relative grid justify-items-center gap-[10px] pt-[8px] pb-[6px]">
       <svg viewBox="0 30 280 64" className="w-full max-w-[300px] h-auto overflow-visible">
         <defs>
           {/* userSpaceOnUse: a horizontal line has a zero-height box, and a box-relative filter region would hide it. */}
@@ -84,20 +82,17 @@ export function ConnectBurst({ kind, name }: { kind: 'mutual' | 'sent'; name: st
         </motion.g>
       </svg>
 
-      <motion.p className="m-0 flex flex-wrap items-center justify-center gap-[8px] font-mono text-[12.5px] font-semibold tracking-[0.08em] text-accent"
-        initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={at(mutual ? 1.5 : 0.9, 0.4)}>
-        <span>
-          {mutual ? '> link established' : '> signal sent'}
-          {!reduce && <motion.span className="ml-[2px]" animate={{ opacity: [1, 0, 1] }} transition={{ duration: 1, repeat: Infinity }}>▎</motion.span>}
-        </span>
-        {/* Inline after the line, so it never covers a node whatever the width. */}
-        {mutual && (
+      {/* One-way: the nodes and travelling dots say it (owner's request: no "> signal sent" line). */}
+      {mutual && (
+        <motion.p className="m-0 flex flex-wrap items-center justify-center gap-[8px] font-mono text-[12.5px] font-semibold tracking-[0.08em] text-accent"
+          initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={at(1.5, 0.4)}>
+          {/* Owner's request: just the +1, centred under the two nodes. */}
           <motion.span className="rounded-full px-[9px] py-[2px] text-[11px] font-bold tracking-[0.02em] text-[var(--accent-ink)] bg-[var(--accent)] shadow-[0_0_14px_rgba(52,211,153,0.45)]"
             initial={reduce ? false : { scale: 0, opacity: 0 }} animate={{ scale: [0, 1.15, 1], opacity: 1 }} transition={at(1.75, 0.45)}>
             +1 connection
           </motion.span>
-        )}
-      </motion.p>
+        </motion.p>
+      )}
     </div>
   );
 }

@@ -34,7 +34,6 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await expect(anonPage.getByTestId('badge-bio')).toHaveText('I build <b>quokkabots</b>\nand drink tea', { useInnerText: true });
   await expect(anonPage.getByRole('link', { name: '← My menu' })).toHaveCount(0); // the way back is for signed-in hackers
   await expect(anonPage.getByTestId('connect-burst')).toHaveCount(0);
-  await expect(anonPage.getByTestId('connection-chip')).toHaveCount(0);
   await anon.close();
 
   const a = await browser.newContext({ baseURL: E2E_ORIGIN });
@@ -58,10 +57,8 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await expect(aPage.getByTestId('connect-burst')).toHaveCount(0);
   await aPage.goto(`/profile/${bBadge}?tap`);
   await expect(aPage.getByTestId('connect-burst')).toHaveAttribute('data-kind', 'sent'); // the special one, this tap only
-  await expect(aPage.getByTestId('connection-chip')).toHaveText('◌ Waiting for Ben');
   await expect(aPage.getByText(/Sent! It counts/)).toHaveCount(0); // owner's request: the chip says it
   await aPage.reload(); // a refresh doesn't tap again, or replay it
-  await expect(aPage.getByTestId('connection-chip')).toHaveText('◌ Waiting for Ben');
   await expect(aPage.getByTestId('connect-burst')).toHaveCount(0);
   expect(await taps()).toBe(1);
 
@@ -70,12 +67,10 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await createAccount(await emailOf(f.p.B));
   await signIn(bPage, await emailOf(f.p.B), `/profile/${aBadge}`);
   await expect(bPage.getByText('Ada tapped your badge. Tap theirs with your phone to connect back.')).toBeVisible();
-  await expect(bPage.getByTestId('connection-chip')).toHaveText('↩ Tapped you');
   await bPage.goto(`/profile/${aBadge}?tap`); // Ben taps Ada's badge back
   await expect(bPage.getByTestId('connect-burst')).toHaveAttribute('data-kind', 'mutual');
-  await expect(bPage.getByText('✓ You’re connected with Ada.')).toHaveCount(0); // the chip says it (v0.12.4 polish)
+  await expect(bPage.getByRole('status').filter({ hasText: '✓ You’re connected with Ada.' })).toHaveClass(/sr-only/); // for screen readers only
   await expect(bPage.getByText('+1 connection')).toBeVisible();
-  await expect(bPage.getByTestId('connection-chip')).toHaveText('● Connected');
   expect(await taps()).toBe(2);
 
   // A's menu: the Connections row counts it; the page lists Ben with his shared LinkedIn.
