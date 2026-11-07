@@ -15,12 +15,14 @@ test.afterAll(async () => {
 const emailOf = async (participantId: string) =>
   (await f.pool.query<{ email: string }>('select email from participants where id = $1', [participantId])).rows[0]?.email ?? '';
 
-test('T-CONN-06: A connects on B’s badge, B connects back, both see each other on /me; signed out sees no connect at all (v0.12.4)', async ({ browser }) => {
+test('T-CONN-06: A connects on B’s badge, B connects back, both see each other on /me; signed out sees no connect at all; fellow attendees see the bio (v0.12.4)', async ({ browser }) => {
   await f.checkIn(f.p.A);
   await f.checkIn(f.p.B);
   const { uid: aBadge } = await f.linkBadge(f.p.A);
   const { uid: bBadge } = await f.linkBadge(f.p.B);
   await f.pool.query(`update participants set linkedin_url = 'https://www.linkedin.com/in/ben-fixture', profile_public = true where id = $1`, [f.p.B]);
+  // v0.12.4: his directory bio shows on his badge page, but only to fellow attendees (the directory's audience, F16).
+  await f.pool.query(`update participants set bio = $2, directory_opt_in = true where id = $1`, [f.p.B, 'I build <b>quokkabots</b>\nand drink tea']);
 
   const anon = await browser.newContext({ baseURL: E2E_ORIGIN });
   const anonPage = await anon.newPage();
@@ -28,12 +30,22 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await expect(anonPage.getByText('Ben')).not.toHaveCount(0); // the profile itself is shown
   await expect(anonPage.getByRole('link', { name: /Sign in/ })).toHaveCount(0); // owner's request: no Sign in to connect
   await expect(anonPage.getByRole('button', { name: /Connect/ })).toHaveCount(0);
+  await expect(anonPage.getByTestId('badge-bio')).toHaveCount(0); // never to strangers
+  expect(await anonPage.content()).not.toContain('quokkabots');
   await anon.close();
 
   const a = await browser.newContext({ baseURL: E2E_ORIGIN });
   const aPage = await a.newPage();
   await createAccount(await emailOf(f.p.A));
   await signIn(aPage, await emailOf(f.p.A), `/profile/${bBadge}?tap`);
+  await expect(aPage.getByTestId('badge-bio')).toHaveText('I build <b>quokkabots</b>\nand drink tea', { useInnerText: true }); // escaped, line kept
+  await f.pool.query(`update participants set profile_public = false where id = $1`, [f.p.B]);
+  await aPage.reload();
+  await expect(aPage.getByTestId('badge-bio')).toHaveCount(0); // a private badge stays nameless and bio-less
+  await f.pool.query(`update participants set profile_public = true, directory_opt_in = false where id = $1`, [f.p.B]);
+  await aPage.reload();
+  await expect(aPage.getByRole('heading', { name: 'Ben Fixture' })).toBeVisible();
+  await expect(aPage.getByTestId('badge-bio')).toHaveCount(0); // not listed in the directory: no bio
   await aPage.getByRole('button', { name: 'Connect with Ben' }).click();
   await expect(aPage.getByText('Sent! It counts once Ben taps your badge too.')).toBeVisible();
   await expect(aPage.getByRole('button', { name: /Connect/ })).toHaveCount(0);

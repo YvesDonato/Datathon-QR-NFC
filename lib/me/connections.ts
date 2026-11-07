@@ -61,3 +61,28 @@ export async function myRank(db: Db, participantId: string): Promise<{ points: n
   if (error) throw new Error(`connection_rank failed (${error.code})`);
   return z.object({ points: z.number(), rank: z.number().nullable() }).strict().parse(data);
 }
+
+// Fellow attendees of the badge's event: connection_state() found the viewer's own accepted row there.
+const FELLOW: readonly ConnectionState[] = ['NONE', 'SENT', 'RECEIVED', 'MUTUAL', 'NOT_CHECKED_IN', 'CLOSED'];
+export const isFellowAttendee = (state: ConnectionState | null) => state !== null && FELLOW.includes(state);
+
+// v0.12.4 (owner's request): the badge holder's bio on their badge page, for the audience that can already read it in
+// the Hacker directory (F16): fellow attendees, and only while the holder is listed there. The badge resolves like
+// connection_state(): its newest link to an accepted, undeleted participant of an event that ended at most 30 days ago.
+export async function badgeHolderBio(db: Db, uid: string, now: Date): Promise<string | null> {
+  const badge = normalizeUid(uid);
+  if (!badge) return null;
+  const { data: links, error } = await db.from('badges').select('participant_id, event_id').eq('uid', badge).order('linked_at', { ascending: false });
+  if (error) throw new Error(`badge lookup failed (${error.code})`);
+  const cutoff = now.getTime() - 30 * 24 * 3600 * 1000;
+  for (const link of links ?? []) {
+    const [{ data: who, error: e1 }, { data: event, error: e2 }] = await Promise.all([
+      db.from('participants').select('status, deleted_at, directory_opt_in, bio').eq('id', link.participant_id).maybeSingle(),
+      db.from('events').select('ends_at').eq('id', link.event_id).maybeSingle(),
+    ]);
+    if (e1 || e2) throw new Error(`badge holder lookup failed (${(e1 ?? e2)?.code})`);
+    if (!who || !event || who.status !== 'accepted' || who.deleted_at !== null || new Date(event.ends_at).getTime() <= cutoff) continue;
+    return who.directory_opt_in && who.bio ? who.bio : null;
+  }
+  return null;
+}

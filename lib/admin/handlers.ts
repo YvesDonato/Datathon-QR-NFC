@@ -16,6 +16,9 @@ import { isJsonContentType } from '@/lib/http/content-type';
 import { syncSheet } from '@/lib/ingest/sync';
 import { withinLimit } from '@/lib/pass/handlers';
 import { cateringHackers, cateringToken, cateringUrl } from './catering';
+import { deleteJudge, importJudges, linkJudgeBadge, listJudges, setJudgeLinkedin, unlinkJudgeBadge } from './judges';
+import { normalizeLinkedIn, normalizeUid } from '@/lib/domain/badge';
+import { parseJudgesCsv } from '@/lib/domain/judges';
 import { PHOTO_BUCKET } from '@/lib/storage/photos';
 
 type Db = SupabaseClient<Database>;
@@ -51,6 +54,11 @@ async function readJson(request: Request): Promise<unknown> {
 }
 
 const uuid = (v: string | undefined) => z.uuid().safeParse(v).data ?? null;
+
+// SPEC §11 Judges (v0.12.4)
+const judgesImportBody = z.object({ csv: z.string().max(4_000_000), dryRun: z.boolean() }).strict();
+const judgeUpdateBody = z.object({ linkedin: z.string().max(300) }).strict();
+const judgeBadgeBody = z.object({ uid: z.string().max(40) }).strict();
 
 const metricsSchema = z.object({
   accepted: z.number(),
@@ -524,6 +532,77 @@ export function createAdminApi(deps: AdminDeps) {
       if (error) throw new Error(`queue_event_eve failed (${error.code})`);
       if (!body.data.dryRun && data > 0) deps.scheduleDrain(deps.drain);
       return json({ count: data });
+    },
+
+    // GET /api/admin/[slug]/judges (§11 Judges, v0.12.4)
+    async listJudges(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      return json({ judges: await listJudges(db, g.eventId) });
+    },
+
+    // POST /api/admin/[slug]/judges/import  { csv, dryRun }: the tracker's Confirmed rows (or the Judges tab's Yes rows)
+    async importJudges(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const body = judgesImportBody.safeParse(await readJson(request));
+      if (!body.success) return badRequest();
+      const parsed = parseJudgesCsv(body.data.csv);
+      if (!parsed.ok) return json({ error: 'bad_sheet', message: 'Missing header: Name' }, 422);
+      const counts = await importJudges(db, g.eventId, parsed.judges, body.data.dryRun);
+      if (!body.data.dryRun) await audit(g.eventId, g.userId, 'judge.import', null, { created: counts.created, updated: counts.updated });
+      return json({ ...counts, total: parsed.judges.length, skipped: parsed.skipped, badLinkedin: parsed.badLinkedin });
+    },
+
+    // PATCH /api/admin/[slug]/judges/[id]  { linkedin }: blank clears it
+    async updateJudge(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const id = uuid(params.id);
+      const body = judgeUpdateBody.safeParse(await readJson(request));
+      if (!id || !body.success) return badRequest();
+      const raw = body.data.linkedin.trim();
+      const url = raw ? normalizeLinkedIn(raw) : null;
+      if (raw && !url) return json({ error: 'invalid_linkedin', message: 'That isn’t a LinkedIn profile link (linkedin.com/in/…).' }, 400);
+      if (!(await setJudgeLinkedin(db, g.eventId, id, url))) return notFound();
+      await audit(g.eventId, g.userId, 'judge.update', id);
+      return json({ linkedinUrl: url });
+    },
+
+    // DELETE /api/admin/[slug]/judges/[id]
+    async deleteJudge(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const id = uuid(params.id);
+      if (!id) return badRequest();
+      if (!(await deleteJudge(db, g.eventId, id))) return notFound();
+      await audit(g.eventId, g.userId, 'judge.delete', id);
+      return json({ deleted: true });
+    },
+
+    // POST /api/admin/[slug]/judges/[id]/badge  { uid }: LINKED | BADGE_TAKEN (a hacker's badge)
+    async linkJudgeBadge(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const id = uuid(params.id);
+      const body = judgeBadgeBody.safeParse(await readJson(request));
+      // Like POST /api/events/:slug/badges: only the normalized UID (§6.5).
+      if (!id || !body.success || normalizeUid(body.data.uid) !== body.data.uid) return badRequest();
+      const code = await linkJudgeBadge(db, g.eventId, id, body.data.uid, now());
+      if (code === 'NOT_FOUND') return json({ code }, 404);
+      if (code === 'LINKED') await audit(g.eventId, g.userId, 'judge.badge', id); // never the UID in detail
+      return json({ code });
+    },
+
+    // DELETE /api/admin/[slug]/judges/[id]/badge
+    async unlinkJudgeBadge(request: Request, params: Params) {
+      const g = await guard(request, params);
+      if (g instanceof Response) return g;
+      const id = uuid(params.id);
+      if (!id) return badRequest();
+      if (!(await unlinkJudgeBadge(db, g.eventId, id))) return json({ code: 'NOT_FOUND' }, 404);
+      await audit(g.eventId, g.userId, 'judge.unbadge', id);
+      return json({ code: 'UNLINKED' });
     },
 
     // POST /api/admin/[slug]/participants/[id]/resend

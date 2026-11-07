@@ -14,9 +14,10 @@ import { clientIpKey } from '@/lib/http/ip';
 import { IP_CEILING_PER_MIN, withinLimit } from '@/lib/pass/handlers';
 import { normalizeUid } from '@/lib/domain/badge';
 import { normalizeEmail } from '@/lib/domain/normalize';
-import { connect, connectionState, type ConnectionState } from '@/lib/me/connections';
+import { badgeHolderBio, connect, connectionState, isFellowAttendee, type ConnectionState } from '@/lib/me/connections';
 import { CopyButton } from './copy-button';
 import { DiscordIcon, GlobeIcon, LinkedInIcon } from '@/app/me/icons';
+import { judgeForBadge } from '@/lib/admin/judges';
 
 // SPEC §6.5: what a phone opens when it taps a badge. Public since v0.9: no sign-in needed, and
 // badge_profile() returns only what the holder shares. The holder's own tap opens their menu.
@@ -49,14 +50,17 @@ const siteLabel = (href: string) => {
   return `${url.host}${url.pathname}${url.search}`.replace(/\/$/, '');
 };
 
-// "https://www.linkedin.com/in/ada-l/" → "in/ada-l" (accents decoded back for reading).
+// "https://www.linkedin.com/in/ada-l/" → "in/ada-l" (accents decoded back for reading). LinkedIn's internal member ids
+// ("in/ACoAAAT…") and other long handles read as noise, so they show as "LinkedIn profile".
 const linkedinLabel = (href: string) => {
   const path = new URL(href).pathname.replace(/\/$/, '').replace(/^\//, '');
+  let label = path;
   try {
-    return decodeURIComponent(path);
+    label = decodeURIComponent(path);
   } catch {
-    return path;
+    // keep the encoded form
   }
+  return /^in\/ACo[A-Za-z0-9_-]{10,}$/.test(label) || label.length > 33 ? 'LinkedIn profile' : label;
 };
 
 const ROW = 'flex flex-wrap items-center gap-[4px_12px] min-h-[60px] py-[8px] [border-top:1px_solid_var(--line)]';
@@ -110,8 +114,12 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
   // v0.6 (F14): the holder tapping their own badge opens their hacker menu.
   if (z.object({ self: z.literal(true) }).safeParse(data).success) redirect('/me');
   const profile = profileSchema.parse(data);
+  // v0.12.4 (§11 Judges): a badge no hacker holds may be a judge's: name, "Judge", title and LinkedIn.
+  const judge = profile === null ? await judgeForBadge(db(), uid, new Date()) : null;
   const state: ConnectionState | null = profile && viewer ? await connectionState(db(), viewer, uid) : null;
   const limited = (await props.searchParams).c === 'RATE_LIMITED';
+  // v0.12.4: the bio, only for those who can already read it in the Hacker directory (F16), and never on an unshared profile.
+  const bio = profile?.public && isFellowAttendee(state) ? await badgeHolderBio(db(), uid, new Date()) : null;
   // A private profile shows no name (§6.5), so the Connect wording doesn't either.
   const name = profile?.public ? profile.firstName : null;
 
@@ -121,7 +129,27 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
           [:where(&)_>_*]:mb-0">
       <BrandMark className="min-h-11 mb-[8px]" />
       <Card className="[&>p]:m-0 [&>h2]:text-lg " asChild><section >
-        {profile === null && (
+        {judge && (
+          <>
+            <header className="grid gap-[4px]">
+              <p className="m-0 text-accent text-[12px] tracking-[0.12em] uppercase font-semibold">Judge</p>
+              <h1 className="m-0 text-[28px] font-semibold leading-[1.2] [overflow-wrap:anywhere]">{judge.name}</h1>
+              {judge.title && <p className="copy m-0 text-muted-foreground">{judge.title}</p>}
+            </header>
+            {judge.linkedinUrl && (
+              <ul className="m-0 p-0 list-none grid">
+                <li className={ROW}>
+                  <span className={LABEL}><LinkedInIcon className={ICON} /><span className={LABEL_TEXT}>LinkedIn</span></span>
+                  <span className={VALUE}>{linkedinLabel(judge.linkedinUrl)}</span>
+                  <Button variant="outline" size="sm" className={ACTION} asChild>
+                    <a href={judge.linkedinUrl} rel="noopener noreferrer" aria-label={`Open ${judge.name}’s LinkedIn profile`}>Open ↗</a>
+                  </Button>
+                </li>
+              </ul>
+            )}
+          </>
+        )}
+        {profile === null && !judge && (
           <>
             <h1>This badge isn’t linked yet</h1>
             <p className="copy">Staff link badges at the check-in desk.</p>
@@ -139,6 +167,7 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
               <p className="m-0 text-muted-foreground text-[12px] tracking-[0.12em] uppercase">Hacker profile</p>
               <h1 className="m-0 text-[28px] font-semibold leading-[1.2] [overflow-wrap:anywhere]">{`${profile.firstName} ${profile.lastName}`.trim()}</h1>
             </header>
+            {bio && <p className="copy m-0 whitespace-pre-line [overflow-wrap:anywhere]" data-testid="badge-bio">{bio}</p>}
             {/* One row per link, all alike: what it is, its value, one action (owner's request, v0.12.4). */}
             {(profile.linkedinUrl || profile.discord || profile.websiteUrl) ? (
               <ul className="m-0 p-0 list-none grid">

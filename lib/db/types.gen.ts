@@ -195,6 +195,26 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"judges": {
+                  Row: {
+                    "badge_linked_at": string | null,"badge_uid": string | null,"created_at": string,"event_id": string,"id": string,"linkedin_url": string | null,"name": string,"title": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "badge_linked_at"?: string | null,"badge_uid"?: string | null,"created_at"?: string,"event_id": string,"id"?: string,"linkedin_url"?: string | null,"name": string,"title"?: string | null
+                  }
+                  Update: {
+                    "badge_linked_at"?: string | null,"badge_uid"?: string | null,"created_at"?: string,"event_id"?: string,"id"?: string,"linkedin_url"?: string | null,"name"?: string,"title"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "judges_event_id_fkey"
+      columns: ["event_id"]
+isOneToOne: false
+      referencedRelation: "events"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"participant_tracks": {
                   Row: {
                     "created_at": string,"event_id": string,"participant_id": string,"track_id": string
