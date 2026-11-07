@@ -32,7 +32,6 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   await expect(anonPage.getByRole('button', { name: /Connect/ })).toHaveCount(0);
   await expect(anonPage.getByTestId('badge-bio')).toHaveCount(0); // never to strangers
   await expect(anonPage.getByRole('link', { name: '← My menu' })).toHaveCount(0); // the way back is for signed-in hackers
-  await expect(anonPage.getByTestId('tap-ripple')).toHaveCount(1); // the plain animation, never the special one
   await expect(anonPage.getByTestId('connect-burst')).toHaveCount(0);
   await expect(anonPage.getByTestId('connection-chip')).toHaveCount(0);
   expect(await anonPage.content()).not.toContain('quokkabots');
@@ -58,13 +57,12 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   expect(await taps()).toBe(0);
   await expect(aPage.getByTestId('connect-burst')).toHaveCount(0);
   await aPage.goto(`/profile/${bBadge}?tap`);
-  await expect(aPage.getByText('Sent! It counts once Ben taps your badge too.')).toBeVisible();
   await expect(aPage.getByTestId('connect-burst')).toHaveAttribute('data-kind', 'sent'); // the special one, this tap only
   await expect(aPage.getByTestId('connection-chip')).toHaveText('◌ Waiting for Ben');
+  await expect(aPage.getByText(/Sent! It counts/)).toHaveCount(0); // owner's request: the chip says it
   await aPage.reload(); // a refresh doesn't tap again, or replay it
-  await expect(aPage.getByText('Sent! It counts once Ben taps your badge too.')).toBeVisible();
+  await expect(aPage.getByTestId('connection-chip')).toHaveText('◌ Waiting for Ben');
   await expect(aPage.getByTestId('connect-burst')).toHaveCount(0);
-  await expect(aPage.getByTestId('tap-ripple')).toHaveCount(1);
   expect(await taps()).toBe(1);
 
   const b = await browser.newContext({ baseURL: E2E_ORIGIN });

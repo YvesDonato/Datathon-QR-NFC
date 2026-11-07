@@ -60,12 +60,13 @@ test('T-JUDGE-04: the judges listed, fix a LinkedIn, link a judge’s badge; tap
   expect(await nfcWrites(page)).toEqual([{ records: [{ recordType: 'url', data: `https://badges.example.test/profile/${uid}?tap` }] }]);
   expect(await nfcActive(page)).toBe(0);
 
-  // A hacker's badge can't become a judge's.
   const { uid: hackerUid } = await f.linkBadge(f.p.A);
   await page.getByRole('listitem', { name: 'Mahir Azim' }).getByRole('button', { name: 'Link badge for Mahir Azim' }).click();
   await expect.poll(() => nfcActive(page)).toBe(1);
   await nfcTap(page, serialOf(hackerUid), [`https://badges.example.test/profile/${hackerUid}?tap`]);
-  await expect(page.getByRole('status').filter({ hasText: `✕ Badge ${serialOf(hackerUid)} is a hacker’s badge. Use another badge for Mahir Azim.` })).toBeVisible();
+  // v0.12.4 (owner's request): the tap overwrites: the hacker's badge moves to the judge.
+  await expect(page.getByRole('status').filter({ hasText: `✓ Badge ${serialOf(hackerUid)} linked to Mahir Azim. It was Ada Fixture’s badge, so it’s unlinked from them.` })).toBeVisible();
+  await expect(page.getByRole('listitem', { name: 'Mahir Azim' })).toContainText('✓ Badge linked');
 
   // Anyone tapping the judge's badge: Judge, name, title, LinkedIn; no Connect, no email.
   const anon = await browser.newContext({ baseURL: E2E_ORIGIN, storageState: undefined });

@@ -21,7 +21,7 @@ import { DiscordIcon, GlobeIcon, LinkedInIcon } from '@/app/me/icons';
 import { judgeForBadge } from '@/lib/admin/judges';
 import { ACTION, ICON, LABEL, LABEL_TEXT, linkedinLabel, ROW, VALUE } from './rows';
 import { JudgeCard } from './judge-card';
-import { ConnectBurst, TapRipple } from './connect-fx';
+import { ConnectBurst } from './connect-fx';
 
 // SPEC §6.5: what a phone opens when it taps a badge. Public since v0.9: no sign-in needed, and
 // badge_profile() returns only what the holder shares. The holder's own tap opens their menu.
@@ -125,7 +125,8 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
         <BrandMark className="min-h-11 mb-[8px]" />
       )}
       <Card className={`relative overflow-hidden [&>p]:m-0 [&>h2]:text-lg ${state === 'MUTUAL' ? 'ring-1 ring-[color-mix(in_srgb,var(--accent)_45%,transparent)] shadow-[0_0_32px_rgba(52,211,153,0.12)]' : ''}`} asChild><section>
-        {burst ? <ConnectBurst kind={burst} name={name} /> : (profile?.public || judge) && <TapRipple />}
+        {/* Otherwise the page just rises in like every page (app/template.tsx), owner's request. */}
+        {burst && <ConnectBurst kind={burst} name={name} />}
         {judge && <JudgeCard judge={judge} />}
         {profile === null && !judge && (
           <>
@@ -213,7 +214,7 @@ function Connect(props: { name: string | null; state: ConnectionState }) {
     case 'RECEIVED':
       return <p className={`${box} m-0`}>{name ?? 'They'} tapped your badge. Tap theirs with your phone to connect back.</p>;
     case 'SENT':
-      return <p role="status" className={`${box} m-0`}>Sent! It counts once {name ?? 'they'} tap{name ? 's' : ''} your badge too.</p>;
+      return null; // owner's request (v0.12.4): the "◌ Waiting for {name}" chip says it
     case 'MUTUAL':
       return <p role="status" className={`${box} m-0 text-ok`}>✓ You’re connected{name ? ` with ${name}` : ''}.</p>;
     case 'NOT_CHECKED_IN':

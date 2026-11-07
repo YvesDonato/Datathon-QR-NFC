@@ -50,21 +50,39 @@ export async function setJudgeLinkedin(db: Db, eventId: string, judgeId: string,
   return data.length > 0;
 }
 
-// LINKED (moved off another judge if it was theirs), BADGE_TAKEN (a hacker's badge in this event), NOT_FOUND.
-// shortcut: a hacker's link_badge() doesn't check judges, so a judge's badge linked to a hacker later shows the hacker
-// (badge_profile wins on the badge page); fine while judges get their own badges, else move it into link_badge().
-export async function linkJudgeBadge(db: Db, eventId: string, judgeId: string, uid: string, now: Date) {
-  const { data: hacker, error: e1 } = await db.from('badges').select('uid').eq('event_id', eventId).eq('uid', uid).maybeSingle();
-  if (e1) throw new Error(`badge lookup failed (${e1.code})`);
-  if (hacker) return 'BADGE_TAKEN' as const;
-  const { data: judge, error: e2 } = await db.from('judges').select('id').eq('id', judgeId).eq('event_id', eventId).maybeSingle();
-  if (e2) throw new Error(`judge lookup failed (${e2.code})`);
-  if (!judge) return 'NOT_FOUND' as const;
+// LINKED, moving the badge off whoever had it (owner's request, v0.12.4: the organizer's tap overwrites): another judge,
+// or a hacker, whose badge is unlinked through unlink_badge() (its lock and badge.unlink audit). `from` names the hacker
+// it came from, for the organizer's notice. NOT_FOUND: no such judge in this event.
+export async function linkJudgeBadge(db: Db, eventId: string, judgeId: string, uid: string, actor: string, now: Date) {
+  const { data: judge, error: e1 } = await db.from('judges').select('id').eq('id', judgeId).eq('event_id', eventId).maybeSingle();
+  if (e1) throw new Error(`judge lookup failed (${e1.code})`);
+  if (!judge) return { code: 'NOT_FOUND' as const };
+  const { data: hacker, error: e2 } = await db.from('badges').select('participant_id, participants(first_name, last_name)').eq('event_id', eventId).eq('uid', uid).maybeSingle();
+  if (e2) throw new Error(`badge lookup failed (${e2.code})`);
+  let from: string | undefined;
+  if (hacker) {
+    const { error } = await db.rpc('unlink_badge', { p_event_id: eventId, p_participant_id: hacker.participant_id, p_actor: actor });
+    if (error) throw new Error(`unlink_badge failed (${error.code})`);
+    from = `${hacker.participants?.first_name ?? ''} ${hacker.participants?.last_name ?? ''}`.trim() || undefined;
+  }
   const { error: e3 } = await db.from('judges').update({ badge_uid: null, badge_linked_at: null }).eq('event_id', eventId).eq('badge_uid', uid).neq('id', judgeId);
   if (e3) throw new Error(`judge badge move failed (${e3.code})`);
   const { error: e4 } = await db.from('judges').update({ badge_uid: uid, badge_linked_at: now.toISOString() }).eq('id', judgeId).eq('event_id', eventId);
   if (e4) throw new Error(`judge badge link failed (${e4.code})`);
-  return 'LINKED' as const;
+  return { code: 'LINKED' as const, ...(from && { from }) };
+}
+
+// A hacker's link (link_badge) takes the badge off a judge: an organizer's moves it, a volunteer is refused, like a
+// badge linked to another hacker (§6.5). True when a judge holds it and the caller may not take it.
+export async function judgeHoldsBadge(db: Db, eventId: string, uid: string): Promise<boolean> {
+  const { data, error } = await db.from('judges').select('id').eq('event_id', eventId).eq('badge_uid', uid).limit(1);
+  if (error) throw new Error(`judge badge lookup failed (${error.code})`);
+  return data.length > 0;
+}
+
+export async function releaseJudgeBadge(db: Db, eventId: string, uid: string): Promise<void> {
+  const { error } = await db.from('judges').update({ badge_uid: null, badge_linked_at: null }).eq('event_id', eventId).eq('badge_uid', uid);
+  if (error) throw new Error(`judge badge release failed (${error.code})`);
 }
 
 export async function unlinkJudgeBadge(db: Db, eventId: string, judgeId: string): Promise<boolean> {

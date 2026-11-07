@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 
 import { useCallback, useRef, useState } from 'react';
 import type { Judge } from '@/lib/admin/judges';
-import { formatUid, linkNotice, normalizeUid } from '@/lib/domain/badge';
+import { linkNotice, normalizeUid } from '@/lib/domain/badge';
 import { useBadgeWrite } from '@/lib/scanner/badge-write';
 import { useNfcReader, nfcSupported, type NfcTag } from '@/lib/scanner/nfc';
 import { adminUrl, errorText, useApi, useLoad } from '../api';
@@ -56,11 +56,12 @@ export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: strin
     setBadgeBusy(true);
     const write = await badgeWrite.write(tag, reader, uid);
     nfc.stop();
-    const r = await api<{ code?: string }>(adminUrl(slug, `/judges/${judge.id}/badge`), { method: 'POST', body: { uid } });
+    const r = await api<{ code?: string; from?: string }>(adminUrl(slug, `/judges/${judge.id}/badge`), { method: 'POST', body: { uid } });
     setTarget(null);
     setBadgeBusy(false);
     const code = r.ok ? r.data.code : r.status === 404 ? 'NOT_FOUND' : undefined;
-    setMessage(code === 'BADGE_TAKEN' ? `✕ Badge ${formatUid(uid)} is a hacker’s badge. Use another badge for ${judge.name}.` : linkNotice(code, uid, judge.name, write).text);
+    const moved = r.ok && r.data.from ? ` It was ${r.data.from}’s badge, so it’s unlinked from them.` : '';
+    setMessage(`${linkNotice(code, uid, judge.name, write).text}${moved}`);
     await load();
   }
   const nfc = useNfcReader({

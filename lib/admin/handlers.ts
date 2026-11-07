@@ -580,7 +580,7 @@ export function createAdminApi(deps: AdminDeps) {
       return json({ deleted: true });
     },
 
-    // POST /api/admin/[slug]/judges/[id]/badge  { uid }: LINKED | BADGE_TAKEN (a hacker's badge)
+    // POST /api/admin/[slug]/judges/[id]/badge  { uid }: LINKED (+ from: the hacker it was taken from)
     async linkJudgeBadge(request: Request, params: Params) {
       const g = await guard(request, params);
       if (g instanceof Response) return g;
@@ -588,10 +588,10 @@ export function createAdminApi(deps: AdminDeps) {
       const body = judgeBadgeBody.safeParse(await readJson(request));
       // Like POST /api/events/:slug/badges: only the normalized UID (§6.5).
       if (!id || !body.success || normalizeUid(body.data.uid) !== body.data.uid) return badRequest();
-      const code = await linkJudgeBadge(db, g.eventId, id, body.data.uid, now());
-      if (code === 'NOT_FOUND') return json({ code }, 404);
-      if (code === 'LINKED') await audit(g.eventId, g.userId, 'judge.badge', id); // never the UID in detail
-      return json({ code });
+      const result = await linkJudgeBadge(db, g.eventId, id, body.data.uid, g.userId, now());
+      if (result.code === 'NOT_FOUND') return json(result, 404);
+      await audit(g.eventId, g.userId, 'judge.badge', id, { fromHacker: !!result.from }); // never the UID or a name in detail
+      return json(result);
     },
 
     // DELETE /api/admin/[slug]/judges/[id]/badge

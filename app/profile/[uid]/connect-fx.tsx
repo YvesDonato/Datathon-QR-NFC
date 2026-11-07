@@ -95,18 +95,3 @@ export function ConnectBurst({ kind, name }: { kind: 'mutual' | 'sent'; name: st
     </div>
   );
 }
-
-/** Every other view of a badge (signed out included): one NFC ripple behind the name, then still. */
-export function TapRipple() {
-  const reduce = useReducedMotion() ?? false;
-  if (reduce) return null;
-  return (
-    <span aria-hidden="true" className="pointer-events-none absolute left-[18px] top-[22px] h-[36px] w-[36px]" data-testid="tap-ripple">
-      {[0, 1, 2].map((i) => (
-        <motion.span key={i} className="absolute inset-0 rounded-full border border-[color-mix(in_srgb,var(--accent)_70%,transparent)]"
-          initial={{ scale: 0.3, opacity: 0 }} animate={{ scale: 4.2, opacity: [0, 0.55, 0] }}
-          transition={{ delay: 0.25 + i * 0.22, duration: 1.3, ease: 'easeOut' }} />
-      ))}
-    </span>
-  );
-}

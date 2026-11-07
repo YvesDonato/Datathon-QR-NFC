@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { judgeById, judgeForBadge } from '@/lib/admin/judges';
 import { toCsv } from '@/lib/domain/csv';
 import { adminClient } from '../fixtures/admin-api';
+import { scanApi } from '../fixtures/scan-api';
 import { serviceClient } from '../fixtures/mail';
 import { signInAs } from '../fixtures/staff';
 import { createStandardFixture, randomUid, type StandardFixture } from '../fixtures/standard';
@@ -71,8 +72,19 @@ describe('judges (SPEC §11, v0.12.4)', () => {
     expect((await call('linkJudgeBadge', org, { id: wael!.id }, { body: { uid } })).body).toEqual({ code: 'LINKED' }); // moved
     expect((await judges()).judges.map((j) => j.badgeUid)).toEqual([null, uid]);
 
+    // v0.12.4 (owner's request): the organizer's tap overwrites: a hacker's badge moves to the judge (unlinked from them).
     const { uid: hackerUid } = await f.linkBadge(f.p.A);
-    expect((await call('linkJudgeBadge', org, { id: ayush!.id }, { body: { uid: hackerUid } })).body).toEqual({ code: 'BADGE_TAKEN' });
+    expect((await call('linkJudgeBadge', org, { id: ayush!.id }, { body: { uid: hackerUid } })).body).toEqual({ code: 'LINKED', from: 'Ada Fixture' });
+    expect((await f.pool.query('select 1 from badges where uid = $1', [hackerUid])).rows).toHaveLength(0);
+    expect((await f.pool.query(`select 1 from audit_log where action = 'badge.unlink' and subject_id = $1`, [f.p.A])).rows).toHaveLength(1);
+    expect(await judgeForBadge(serviceClient(), hackerUid, new Date())).toMatchObject({ name: 'Ayush Singh' });
+    // And back: a volunteer can't take a judge's badge for a hacker; an organizer moves it, and the judge loses it.
+    const scan = scanApi();
+    const vol = await signInAs(f.staffEmail.vol1);
+    expect((await scan.linkBadge(vol, f.slug, { participantId: f.p.B, uid: hackerUid })).body).toEqual({ code: 'BADGE_TAKEN' });
+    expect((await scan.linkBadge(org, f.slug, { participantId: f.p.B, uid: hackerUid })).body).toEqual({ code: 'LINKED' });
+    expect(await judgeForBadge(serviceClient(), hackerUid, new Date())).toBeNull();
+    expect((await judges()).judges.find((j) => j.name === 'Ayush Singh')?.badgeUid).toBeNull();
 
     // 30 days after the event, the judge's badge stops opening their profile, like a hacker's.
     const { rows: [ev] } = await f.pool.query<{ ends_at: Date }>('select ends_at from events where id = $1', [f.e1.id]);
