@@ -2,7 +2,6 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 import { useCallback, useRef, useState } from 'react';
@@ -14,12 +13,8 @@ import { adminUrl, errorText, useApi, useLoad } from '../api';
 import { ConfirmDialog, Modal } from '../dialog';
 import { PageHeader } from '../page-header';
 
-const MAX_CSV_BYTES = 2 * 1024 * 1024;
-type Preview = { created: number; updated: number; unchanged: number; total: number; skipped: number; badLinkedin: number };
-const judgesText = (n: number) => `${n} judge${n === 1 ? '' : 's'}`;
-const BOX = 'grid gap-[14px] min-w-0 p-[20px] [border-width:1px] [border-style:solid] [border-color:var(--line)] rounded-lg [background:var(--card)] max-[600.001px]:p-[16px]';
 
-// SPEC §11 Judges (v0.12.4, owner's request): import the judges, give each a LinkedIn, and link their badge, which then
+// SPEC §11 Judges (v0.12.4, owner's request): give each judge a LinkedIn and link their badge, which then
 // opens their name, "Judge", title and LinkedIn when tapped (§6.5). Badges link on Android Chrome only (Web NFC).
 export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: string }) {
   const api = useApi();
@@ -33,42 +28,7 @@ export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: strin
   }, [api, slug]);
   useLoad(load);
 
-  // Import CSV: a dry run first, then Import.
-  const [csv, setCsv] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [inputKey, setInputKey] = useState(0);
-  const [busy, setBusy] = useState(false);
-  async function runImport(text: string, dryRun: boolean) {
-    setBusy(true);
-    const r = await api<Preview>(adminUrl(slug, '/judges/import'), { method: 'POST', body: { csv: text, dryRun } });
-    setBusy(false);
-    return r;
-  }
-  async function choose(file: File | undefined) {
-    setCsv(null);
-    setPreview(null);
-    setError(null);
-    setMessage(null);
-    if (!file) return;
-    if (file.size > MAX_CSV_BYTES) return setError('That file is over 2 MB. Is it the right one?');
-    const text = await file.text();
-    const r = await runImport(text, true);
-    if (!r.ok) return setError(r.status === 400 ? 'That file couldn’t be read as a CSV.' : errorText(r));
-    setCsv(text);
-    setPreview(r.data);
-  }
-  async function apply() {
-    if (csv === null) return;
-    const r = await runImport(csv, false);
-    if (!r.ok) return setError(errorText(r));
-    setCsv(null);
-    setPreview(null);
-    setInputKey((k) => k + 1);
-    setMessage(`✓ Imported: ${r.data.created} new, ${r.data.updated} updated.`);
-    await load();
-  }
 
-  // LinkedIn, edited per row.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   async function saveLinkedin(j: Judge) {
     const value = drafts[j.id] ?? j.linkedinUrl ?? '';
@@ -139,41 +99,14 @@ export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: strin
   }
 
   const canLink = nfcSupported();
-  const writes = preview ? preview.created + preview.updated : 0;
   return (
     <div className="grid gap-[24px] min-w-0 pb-[32px]">
-      <PageHeader title="Judges" description="Import the judges, add their LinkedIn, and link their badge: tapping it opens their name, title and LinkedIn." />
-
-      <section aria-labelledby="judges-import" className={`${BOX} max-w-[640px]`}>
-        <div>
-          <h2 id="judges-import" className="m-0 text-[1.08rem] tracking-[-0.02em]">Import CSV</h2>
-          <p className="copy m-[7px_0px_0px] text-muted-foreground text-[0.88rem] leading-[1.65]">
-            Download the judge tracker’s tab as CSV (File → Download → Comma-separated values). It reads Name, Title @ Company and LinkedIn, and only rows whose Status is Confirmed (or, from the judging sheet, Judging? is Yes). Judges are matched by name; nobody is removed.
-          </p>
-        </div>
-        <Label className="grid gap-2 text-sm text-muted-foreground">
-          CSV file
-          <Input key={inputKey} className="w-full min-h-[44px]" type="file" accept=".csv,text/csv" disabled={busy} onChange={(e) => void choose(e.target.files?.[0])} />
-        </Label>
-        {busy && !preview && <p role="status">Checking the file…</p>}
-        {preview && (
-          <p role="status" className="m-0">
-            {judgesText(preview.total)} in the file: {preview.created} new, {preview.updated} updated, {preview.unchanged} unchanged
-            {preview.skipped > 0 && `, ${preview.skipped} not confirmed (skipped)`}
-            {preview.badLinkedin > 0 && `; ${preview.badLinkedin} LinkedIn link${preview.badLinkedin === 1 ? '' : 's'} weren’t profile links and are left blank`}.
-          </p>
-        )}
-        <div className="flex justify-end">
-          <Button type="button" className="min-h-[44px] max-[480.001px]:flex-1" disabled={busy || writes === 0} onClick={() => void apply()}>
-            {writes > 0 ? `Import ${writes}` : 'Import'}
-          </Button>
-        </div>
-      </section>
+      <PageHeader title="Judges" description="Add each judge’s LinkedIn and link their badge: tapping it opens their name, title and LinkedIn." />
 
       {error && <p role="alert" className="m-0 text-bad">✕ {error}</p>}
       <p role="status" className="m-0 min-h-[1.5em]">{message}</p>
 
-      {judges && judges.length === 0 && <p className="copy text-muted-foreground">No judges yet. Import the tracker’s CSV above.</p>}
+      {judges && judges.length === 0 && <p className="copy text-muted-foreground">No judges yet.</p>}
       {judges && judges.length > 0 && (
         <div className="min-w-0 overflow-x-auto">
           <Table>

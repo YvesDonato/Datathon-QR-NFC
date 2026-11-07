@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { toCsv } from '@/lib/domain/csv';
 import { authStatePath, E2E_ORIGIN, installFakeNfc, nfcActive, nfcTap, nfcWrites, saveSignedInState, serialOf } from '../fixtures/e2e';
 import { createStandardFixture, randomUid, type StandardFixture } from '../fixtures/standard';
 
@@ -17,26 +16,23 @@ test.afterAll(async () => {
   await f.close();
 });
 
-test('T-JUDGE-04: import the tracker, fix a LinkedIn, link a judge’s badge; tapping it shows Judge, title and LinkedIn', async ({ page, browser }) => {
+test('T-JUDGE-04: the judges listed, fix a LinkedIn, link a judge’s badge; tapping it shows Judge, title and LinkedIn', async ({ page, browser }) => {
   await installFakeNfc(page);
   await page.goto(`/admin/${f.slug}`);
   await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: 'Judges', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Judges', level: 1 })).toBeVisible();
   await expect(page.getByText('No judges yet.')).toBeVisible();
 
-  const csv = toCsv(['Name', 'Title @ Company', 'LinkedIn', 'Contact', 'Status', 'Notes'], [
-    ['Ayush Singh', 'Research Scientist @ Meta', '', 'a@meta.com', 'Confirmed', 'vegetarian'],
-    ['Mahir Azim', 'AI Product Manager @ EY', 'https://www.linkedin.com/in/mahirazim/', 'm@x.com', 'Confirmed', ''],
-    ['Not Yet', 'X', '', '', 'Contacted', ''],
-  ]);
-  await page.getByLabel('CSV file').setInputFiles({ name: 'judges.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
-  await expect(page.getByText('2 judges in the file: 2 new, 0 updated, 0 unchanged, 1 not confirmed (skipped).')).toBeVisible();
-  await page.getByRole('button', { name: 'Import 2' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '✓ Imported: 2 new, 0 updated.' })).toBeVisible();
+  // v0.12.4: no Import CSV on the page (owner's request); judges are loaded behind the scenes.
+  await expect(page.getByRole('heading', { name: 'Import CSV' })).toHaveCount(0);
+  await f.pool.query(
+    `insert into judges (event_id, name, title, linkedin_url) values ($1, 'Ayush Singh', 'Research Scientist @ Meta', null), ($1, 'Mahir Azim', 'AI Product Manager @ EY', 'https://www.linkedin.com/in/mahirazim')`,
+    [f.e1.id],
+  );
+  await page.reload();
   const ayush = page.getByRole('row', { name: /Ayush Singh/ });
   await expect(ayush).toContainText('Research Scientist @ Meta');
   await expect(page.getByRole('row', { name: /Mahir Azim/ }).getByLabel('LinkedIn for Mahir Azim')).toHaveValue('https://www.linkedin.com/in/mahirazim');
-  await expect(page.getByText('Not Yet')).toHaveCount(0);
 
   const linkedin = ayush.getByLabel('LinkedIn for Ayush Singh');
   await linkedin.fill('linkedin.com/company/meta');
