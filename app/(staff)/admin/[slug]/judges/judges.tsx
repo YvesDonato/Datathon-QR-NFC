@@ -134,13 +134,11 @@ export function Judges({ slug, badgeOrigin }: { slug: string; badgeOrigin: strin
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="flex flex-wrap gap-[8px] items-center">
+                        {/* Their profile: the same card their badge opens (§6.5), with or without a badge. */}
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={`/judge/${j.id}`} target="_blank" rel="noopener" aria-label={`Open ${j.name}’s profile`}>Profile ↗</a>
+                        </Button>
                         {j.badgeUid ? <span className="text-ok">✓ Linked</span> : <span className="text-muted-foreground">No badge</span>}
-                        {j.badgeUid && (
-                          // What anyone tapping the badge sees (§6.5).
-                          <Button size="sm" variant="outline" asChild>
-                            <a href={`/profile/${j.badgeUid}`} target="_blank" rel="noopener" aria-label={`Open ${j.name}’s badge page`}>Open page ↗</a>
-                          </Button>
-                        )}
                         {canLink && (
                           <Button type="button" size="sm" variant="outline" disabled={badgeBusy} aria-label={`${j.badgeUid ? 'Replace' : 'Link'} badge for ${j.name}`} onClick={() => startLink(j)}>
                             {j.badgeUid ? 'Replace badge' : 'Link badge'}

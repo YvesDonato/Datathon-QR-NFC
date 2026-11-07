@@ -95,3 +95,12 @@ export async function judgeForBadge(db: Db, uid: string, now: Date): Promise<{ n
   }
   return null;
 }
+
+// A judge's own page (/judge/<id>, v0.12.4): the same card as their badge, with or without a badge linked, while their
+// event ended at most 30 days ago. Organizers open it from the Judges tab.
+export async function judgeById(db: Db, id: string, now: Date): Promise<{ name: string; title: string | null; linkedinUrl: string | null } | null> {
+  const { data, error } = await db.from('judges').select('name, title, linkedin_url, events!inner(ends_at)').eq('id', id).maybeSingle();
+  if (error) throw new Error(`judge lookup failed (${error.code})`);
+  if (!data || new Date(data.events.ends_at).getTime() <= now.getTime() - 30 * 24 * 3600 * 1000) return null;
+  return { name: data.name, title: data.title, linkedinUrl: data.linkedin_url };
+}

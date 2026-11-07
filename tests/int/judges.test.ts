@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { judgeForBadge } from '@/lib/admin/judges';
+import { judgeById, judgeForBadge } from '@/lib/admin/judges';
 import { toCsv } from '@/lib/domain/csv';
 import { adminClient } from '../fixtures/admin-api';
 import { serviceClient } from '../fixtures/mail';
@@ -62,7 +62,7 @@ describe('judges (SPEC §11, v0.12.4)', () => {
     expect(JSON.stringify(audit.rows)).not.toMatch(/Ayush|Wael|linkedin|meta/i);
   });
 
-  it('T-JUDGE-03: a badge links to one judge (moving off another), never a hacker’s badge; unlink; the badge page finds the judge', async () => {
+  it('T-JUDGE-03: a badge links to one judge (moving off another), never a hacker’s badge; unlink; the badge page and /judge/<id> find the judge', async () => {
     const [ayush, wael] = (await judges()).judges;
     const uid = randomUid();
     expect((await call('linkJudgeBadge', org, { id: ayush!.id }, { body: { uid: uid.toUpperCase() } })).status).toBe(400); // normalized only
@@ -78,6 +78,10 @@ describe('judges (SPEC §11, v0.12.4)', () => {
     const { rows: [ev] } = await f.pool.query<{ ends_at: Date }>('select ends_at from events where id = $1', [f.e1.id]);
     const later = new Date(ev!.ends_at.getTime() + 31 * 24 * 3600 * 1000);
     expect(await judgeForBadge(serviceClient(), uid, later)).toBeNull();
+    // Their own page (/judge/<id>), with or without a badge, in the same 30-day window; an unknown id is nobody.
+    expect(await judgeById(serviceClient(), ayush!.id, new Date())).toEqual({ name: 'Ayush Singh', title: 'Staff Research Scientist @ Meta', linkedinUrl: 'https://www.linkedin.com/in/ayush-singh-se' });
+    expect(await judgeById(serviceClient(), ayush!.id, later)).toBeNull();
+    expect(await judgeById(serviceClient(), crypto.randomUUID(), new Date())).toBeNull();
 
     expect((await call('unlinkJudgeBadge', org, { id: wael!.id }, { method: 'DELETE' })).body).toEqual({ code: 'UNLINKED' });
     expect((await call('unlinkJudgeBadge', org, { id: wael!.id }, { method: 'DELETE' })).status).toBe(404);

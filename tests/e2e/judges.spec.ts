@@ -32,6 +32,11 @@ test('T-JUDGE-04: the judges listed, fix a LinkedIn, link a judge’s badge; tap
   await page.reload();
   const ayush = page.getByRole('row', { name: /Ayush Singh/ });
   await expect(ayush).toContainText('Research Scientist @ Meta');
+  // Every judge has a Profile button, badge or not: their own page shows the badge's card.
+  const profile = ayush.getByRole('link', { name: 'Open Ayush Singh’s profile' });
+  await expect(profile).toHaveAttribute('target', '_blank');
+  const judgeHref = await profile.getAttribute('href');
+  expect(judgeHref).toMatch(/^\/judge\/[0-9a-f-]{36}$/);
   await expect(page.getByRole('row', { name: /Mahir Azim/ }).getByLabel('LinkedIn for Mahir Azim')).toHaveValue('https://www.linkedin.com/in/mahirazim');
 
   const linkedin = ayush.getByLabel('LinkedIn for Ayush Singh');
@@ -52,7 +57,6 @@ test('T-JUDGE-04: the judges listed, fix a LinkedIn, link a judge’s badge; tap
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: `✓ Badge ${serialOf(uid)} linked to Ayush Singh. Its profile link is on the badge.` })).toBeVisible();
   await expect(ayush).toContainText('✓ Linked');
-  await expect(ayush.getByRole('link', { name: 'Open Ayush Singh’s badge page' })).toHaveAttribute('href', `/profile/${uid}`);
   expect(await nfcWrites(page)).toEqual([{ records: [{ recordType: 'url', data: `https://badges.example.test/profile/${uid}?tap` }] }]);
   expect(await nfcActive(page)).toBe(0);
 
@@ -72,7 +76,11 @@ test('T-JUDGE-04: the judges listed, fix a LinkedIn, link a judge’s badge; tap
   await expect(tap.getByText('Research Scientist @ Meta')).toBeVisible();
   await expect(tap.getByRole('link', { name: /LinkedIn/ })).toHaveAttribute('href', 'https://www.linkedin.com/in/ayush-singh-se');
   await expect(tap.getByRole('button', { name: /Connect/ })).toHaveCount(0);
-  expect(await tap.content()).not.toContain('a@meta.com');
+  await tap.goto(judgeHref!); // their own page: the same card
+  await expect(tap.getByRole('heading', { name: 'Ayush Singh' })).toBeVisible();
+  await expect(tap.getByText('Judge', { exact: true })).toBeVisible();
+  await expect(tap.getByRole('link', { name: /LinkedIn/ })).toHaveAttribute('href', 'https://www.linkedin.com/in/ayush-singh-se');
+  expect((await tap.goto('/judge/00000000-0000-4000-8000-000000000000'))?.status()).toBe(404);
   await anon.close();
 
   // Unlink: the badge stops opening the judge.
