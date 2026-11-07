@@ -15,7 +15,7 @@ test.afterAll(async () => {
 const emailOf = async (participantId: string) =>
   (await f.pool.query<{ email: string }>('select email from participants where id = $1', [participantId])).rows[0]?.email ?? '';
 
-test('T-CONN-06: A connects on B’s badge, B connects back, both see each other on /me; signed out sees Sign in to connect', async ({ browser }) => {
+test('T-CONN-06: A connects on B’s badge, B connects back, both see each other on /me; signed out sees no connect at all (v0.12.4)', async ({ browser }) => {
   await f.checkIn(f.p.A);
   await f.checkIn(f.p.B);
   const { uid: aBadge } = await f.linkBadge(f.p.A);
@@ -25,7 +25,8 @@ test('T-CONN-06: A connects on B’s badge, B connects back, both see each other
   const anon = await browser.newContext({ baseURL: E2E_ORIGIN });
   const anonPage = await anon.newPage();
   await anonPage.goto(`/profile/${bBadge}?tap`);
-  await expect(anonPage.getByRole('link', { name: 'Sign in to connect' })).toHaveAttribute('href', `/login?next=${encodeURIComponent(`/profile/${bBadge}`)}`);
+  await expect(anonPage.getByText('Ben')).not.toHaveCount(0); // the profile itself is shown
+  await expect(anonPage.getByRole('link', { name: /Sign in/ })).toHaveCount(0); // owner's request: no Sign in to connect
   await expect(anonPage.getByRole('button', { name: /Connect/ })).toHaveCount(0);
   await anon.close();
 

@@ -16,6 +16,7 @@ import { normalizeUid } from '@/lib/domain/badge';
 import { normalizeEmail } from '@/lib/domain/normalize';
 import { connect, connectionState, type ConnectionState } from '@/lib/me/connections';
 import { CopyButton } from './copy-button';
+import { DiscordIcon, GlobeIcon, LinkedInIcon } from '@/app/me/icons';
 
 // SPEC §6.5: what a phone opens when it taps a badge. Public since v0.9: no sign-in needed, and
 // badge_profile() returns only what the holder shares. The holder's own tap opens their menu.
@@ -48,6 +49,24 @@ const siteLabel = (href: string) => {
   return `${url.host}${url.pathname}${url.search}`.replace(/\/$/, '');
 };
 
+// "https://www.linkedin.com/in/ada-l/" → "in/ada-l" (accents decoded back for reading).
+const linkedinLabel = (href: string) => {
+  const path = new URL(href).pathname.replace(/\/$/, '').replace(/^\//, '');
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
+
+const ROW = 'flex flex-wrap items-center gap-[4px_12px] min-h-[60px] py-[8px] [border-top:1px_solid_var(--line)]';
+// On a phone the icon alone names the row (the word stays for screen readers), leaving the value room.
+const LABEL = 'shrink-0 inline-flex items-center gap-[10px] sm:w-[112px] text-muted-foreground text-[12px] tracking-[0.08em] uppercase';
+const LABEL_TEXT = 'sr-only sm:not-sr-only';
+const ICON = 'w-[20px] h-[20px] shrink-0 text-accent';
+const VALUE = 'flex-1 min-w-[8ch] [overflow-wrap:anywhere] font-semibold';
+const ACTION = 'min-w-[88px]';
+
 // SPEC F17 (v0.12): Connect is a POST from a button; the tapper is the signed-in account, never the badge.
 async function connectAction(formData: FormData) {
   'use server';
@@ -70,7 +89,7 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
   // usual shell — no profile data and no existence signal either way (a 404 would imply unlinked).
   if (!(await withinLimit(db(), clientIpKey(await headers(), 'profile'), 60, IP_CEILING_PER_MIN))) {
     return (
-      <Entrance><main className="max-w-[480px] lg:pointer-fine:max-w-[760px]  m-[0px_auto] p-[24px_16px_56px] flex flex-col gap-[16px] [:where(&)_>_*]:mt-0
+      <Entrance><main className="max-w-[520px] m-[0px_auto] p-[24px_16px_56px] flex flex-col gap-[16px] [:where(&)_>_*]:mt-0
 
           [:where(&)_>_*]:mb-0">
         <BrandMark className="min-h-11 mb-[8px]" />
@@ -97,7 +116,7 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
   const name = profile?.public ? profile.firstName : null;
 
   return (
-    <Entrance><main className="max-w-[480px] lg:pointer-fine:max-w-[760px]  m-[0px_auto] p-[24px_16px_56px] flex flex-col gap-[16px] [:where(&)_>_*]:mt-0
+    <Entrance><main className="max-w-[520px] m-[0px_auto] p-[24px_16px_56px] flex flex-col gap-[16px] [:where(&)_>_*]:mt-0
 
           [:where(&)_>_*]:mb-0">
       <BrandMark className="min-h-11 mb-[8px]" />
@@ -116,39 +135,44 @@ export default async function BadgeProfilePage(props: { params: Promise<{ uid: s
         )}
         {profile?.public && (
           <>
-            <h1 className="text-[28px] font-semibold leading-[1.2]">{`${profile.firstName} ${profile.lastName}`.trim()}</h1>
-            {profile.linkedinUrl && (
-              <Button className="self-start" asChild><a  href={profile.linkedinUrl} rel="noopener noreferrer">
-                View LinkedIn profile
-              </a></Button>
+            <header className="grid gap-[4px]">
+              <p className="m-0 text-muted-foreground text-[12px] tracking-[0.12em] uppercase">Hacker profile</p>
+              <h1 className="m-0 text-[28px] font-semibold leading-[1.2] [overflow-wrap:anywhere]">{`${profile.firstName} ${profile.lastName}`.trim()}</h1>
+            </header>
+            {/* One row per link, all alike: what it is, its value, one action (owner's request, v0.12.4). */}
+            {(profile.linkedinUrl || profile.discord || profile.websiteUrl) ? (
+              <ul className="m-0 p-0 list-none grid">
+                {profile.linkedinUrl && (
+                  <li className={ROW}>
+                    <span className={LABEL}><LinkedInIcon className={ICON} /><span className={LABEL_TEXT}>LinkedIn</span></span>
+                    <span className={VALUE}>{linkedinLabel(profile.linkedinUrl)}</span>
+                    <Button variant="outline" size="sm" className={ACTION} asChild>
+                      <a href={profile.linkedinUrl} rel="noopener noreferrer" aria-label={`Open ${profile.firstName}’s LinkedIn profile`}>Open ↗</a>
+                    </Button>
+                  </li>
+                )}
+                {profile.discord && (
+                  <li className={ROW}>
+                    <span className={LABEL}><DiscordIcon className={ICON} /><span className={LABEL_TEXT}>Discord</span></span>
+                    <span className={VALUE}>@{profile.discord}</span>
+                    <CopyButton text={profile.discord} label="Copy Discord username" className={ACTION} />
+                  </li>
+                )}
+                {profile.websiteUrl && (
+                  <li className={ROW}>
+                    <span className={LABEL}><GlobeIcon className={ICON} /><span className={LABEL_TEXT}>Website</span></span>
+                    <span className={VALUE}>{siteLabel(profile.websiteUrl)}</span>
+                    {/* The holder typed this link: nofollow/ugc, and its address is in the name so the tapper knows where it goes. */}
+                    <Button variant="outline" size="sm" className={ACTION} asChild>
+                      <a href={profile.websiteUrl} rel="nofollow noopener noreferrer ugc" aria-label={`Open ${siteLabel(profile.websiteUrl)}`}>Open ↗</a>
+                    </Button>
+                  </li>
+                )}
+              </ul>
+            ) : (
+              <p className="copy text-muted-foreground">No links shared.</p>
             )}
-            {profile.discord && (
-              <div className="flex flex-wrap items-center gap-[4px_12px] min-h-[44px] pt-[12px] [border-top-width:1px]
-
-          [border-top-style:solid] [border-top-color:var(--line)]">
-                <span className="text-muted-foreground text-[12px] tracking-[0.08em] uppercase min-w-[72px]">Discord</span>
-                <span className="flex-1 min-w-0 [overflow-wrap:anywhere] font-semibold">@{profile.discord}</span>
-                <CopyButton text={profile.discord} label="Copy Discord username" />
-              </div>
-            )}
-            {profile.websiteUrl && (
-              <div className="flex flex-wrap items-center gap-[4px_12px] min-h-[44px] pt-[12px] [border-top-width:1px]
-
-          [border-top-style:solid] [border-top-color:var(--line)]">
-                <span className="text-muted-foreground text-[12px] tracking-[0.08em] uppercase min-w-[72px]">Website</span>
-                {/* The holder typed this link: nofollow/ugc, and its address is the label so the tapper sees where it goes. */}
-                <a className="flex-1 min-w-0 [overflow-wrap:anywhere] font-semibold" href={profile.websiteUrl} rel="nofollow noopener noreferrer ugc">
-                  {siteLabel(profile.websiteUrl)}
-                </a>
-              </div>
-            )}
-            {!profile.linkedinUrl && !profile.discord && !profile.websiteUrl && <p>No links shared.</p>}
           </>
-        )}
-        {profile && !viewer && (
-          <Button className="self-start" variant="outline" asChild>
-            <a href={`/login?next=${encodeURIComponent(`/profile/${uid}`)}`}>Sign in to connect</a>
-          </Button>
         )}
         {profile && state && <Connect uid={uid} name={name} state={state} />}
         {limited && <p role="alert" className="text-bad">✕ Too many connects in a short time. Wait a few minutes and try again.</p>}
