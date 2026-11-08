@@ -6,7 +6,7 @@ import { createStandardFixture, type StandardFixture } from '../fixtures/standar
 const ORG = authStatePath('admin-org');
 const VOL = authStatePath('admin-vol');
 const OTHER_ORG = authStatePath('admin-other-org');
-const PAGES = ['', '/participants', '/teams', '/workshops', '/leaderboard', '/judges', '/checkpoints', '/catering', '/staff', '/info', '/tools'];
+const PAGES = ['', '/participants', '/teams', '/workshops', '/leaderboard', '/judges', '/checkpoints', '/catering', '/staff', '/schedule', '/info', '/tools'];
 
 test.describe.configure({ mode: 'serial' });
 test.use({ storageState: ORG });
@@ -441,4 +441,34 @@ test('T-ADM-13: Send event-day email says how many said Yes, Cancel sends nothin
   await expect(dialog).toContainText('Nothing to send.');
   await dialog.getByRole('button', { name: 'OK' }).click();
   expect(await queued()).toBe(n);
+});
+
+test('T-ADM-14: Schedule edits the hackers’ schedule with a live preview, saves it, and refuses to overwrite a newer save (v0.12.6)', async ({ page }) => {
+  await f.pool.query(`update events set schedule = $2 where id = $1`, [f.e1.id, 'Saturday\n9:00 AM-10:00 AM | Check-in | 1F']);
+  await page.goto(`/admin/${f.slug}/schedule`);
+  const box = page.getByRole('textbox', { name: /Schedule text/ });
+  await expect(box).toHaveValue('Saturday\n9:00 AM-10:00 AM | Check-in | 1F');
+  const preview = page.getByRole('region', { name: 'Preview' });
+  await expect(preview).toContainText('Check-in');
+  const save = page.getByRole('button', { name: 'Save schedule' });
+  await expect(save).toBeDisabled();
+
+  await box.fill('Saturday\n9:00 AM-10:00 AM | Check-in | 1F\n9:00 PM-10:00 PM | Spicy Noodle Challenge | 2F');
+  await expect(preview).toContainText('Spicy Noodle Challenge');
+  await expect(page.getByText(/Unsaved changes/)).toBeVisible();
+  await save.click();
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible();
+  const stored = async () => (await f.pool.query<{ schedule: string }>(`select schedule from events where id = $1`, [f.e1.id])).rows[0]!.schedule;
+  expect(await stored()).toContain('Spicy Noodle Challenge');
+  await expect(save).toBeDisabled();
+
+  // Someone else saves meanwhile: ours is held back until we choose.
+  await f.pool.query(`update events set schedule = $2 where id = $1`, [f.e1.id, 'Saturday\n11:00 AM | Opening Ceremony | 1F']);
+  await box.fill('Saturday\n8:00 AM | Breakfast | 1F');
+  await save.click();
+  await expect(page.getByText(/Someone else saved the schedule/)).toBeVisible();
+  expect(await stored()).toBe('Saturday\n11:00 AM | Opening Ceremony | 1F');
+  await page.getByRole('button', { name: 'Load theirs (discard mine)' }).click();
+  await expect(box).toHaveValue('Saturday\n11:00 AM | Opening Ceremony | 1F');
+  await expect(preview).toContainText('Opening Ceremony');
 });
