@@ -184,7 +184,7 @@ export function ScheduleCalendar({ sections, initialNow, timezone, eventStartsAt
                   const nudge = slot.nudged ? NUDGE : 0;
                   // A nudged hour-long card has room for one line of time, so it switches to "12–1 PM" sooner.
                   const [fullAt, compactAt] = nudge && length < 90 ? ['@max-[11rem]:hidden', 'hidden @max-[11rem]:inline'] : ['@max-[8.5rem]:hidden', 'hidden @max-[8.5rem]:inline'];
-                  const colour = slot.state === 'past' ? 'bg-[#f1f3f4] text-[#5f6368] border-[#dadce0] border-l-[3px] border-l-[var(--category)]' : category.classes;
+                  const colour = slot.state === 'past' ? 'bg-[#1c2029] text-[#8a919c] border-[#2b303a] border-l-[3px] border-l-[color-mix(in_srgb,var(--category)_55%,#1c2029)]' : category.classes;
                   return <li key={j} data-state={slot.state}
                     lang="en" className={`group absolute overflow-hidden rounded-[5px] border-[1.5px] text-xs leading-[1.25] hyphens-auto [overflow-wrap:anywhere] hover:brightness-[1.04] hover:outline-2 hover:outline-[#174ea6]/60 hover:outline-offset-1 has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-[#174ea6] has-[button:focus-visible]:outline-offset-2 ${position} ${colour} @container ${slot.state === 'current' ? 'ring-2 ring-[#174ea6] ring-offset-1 ring-offset-[var(--cal-grid)]' : ''} ${inset || nudge ? 'shadow-[0_0_0_2px_var(--cal-grid)]' : ''}`}
                     style={{ '--minute': slot.topMinute, '--category': category.colour,
