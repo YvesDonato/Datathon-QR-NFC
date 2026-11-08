@@ -153,9 +153,10 @@ function layout(slots: TimelineSlot[]) {
     const alone = group.every(s => s.track === slot.track) && !slots.some(s => s.track !== slot.track
       && s.startMinute < slot.endMinute + NEIGHBOUR_WITHIN && slot.startMinute - NEIGHBOUR_WITHIN < s.endMinute);
     if (alone) [from, to] = [0, used.length - 1];
-    else if (slot.category === 'hacking') {
+    else if (slot.category === 'hacking' || slot.track === 'food') {
+      // Food also reaches into a free side column, so a short meal beside a hacking milestone isn't squeezed (v0.12.7).
       const free = (track: ScheduleTrack) => !slots.some(s => s.track === track && overlaps(s, slot));
-      while (to + 1 < used.length && (used[to + 1]!.id === 'food' || free(used[to + 1]!.id))) to += 1;
+      while (to + 1 < used.length && ((slot.category === 'hacking' && used[to + 1]!.id === 'food') || free(used[to + 1]!.id))) to += 1;
     }
     let { left, width } = extent(from, to);
     const [index, count] = lane.get(slot) ?? [0, 1];

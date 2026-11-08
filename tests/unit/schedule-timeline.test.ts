@@ -44,6 +44,9 @@ describe('scheduleTimeline', () => {
     // Free-standing, but next to another column's slot: stays in its own column like the poster.
     expect(full(find(saturday, 'Fitness Challenge'))).toEqual([0.65, 0.35]);
     expect(full(find(saturday, 'Lunch'))).toEqual([0.4, 0.25]);
+    // v0.12.7 (owner's report): Sunday's Lunch has the side column free beside it, so it reaches into it
+    // instead of squeezing into the food column under Hacking Ends.
+    near(find(sunday, 'Lunch'), [0.4, 0.6]);
     expect(full(find(saturday, 'Sponsor Station'))).toEqual([0.65, 0.35]);
     // Food sits on top of hacking, nudged below its title; Photo Booth stacks on Sponsor Station.
     expect(find(saturday, 'Lunch').layer).toBeGreaterThan(find(saturday, 'Hacking Begins').layer);
